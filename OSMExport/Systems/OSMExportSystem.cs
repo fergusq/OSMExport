@@ -244,7 +244,7 @@ namespace OSMExport.Systems
             var directory = Path.Combine(
                     EnvPath.kUserDataPath,
                     "ModsData",
-                    "MapMaker");
+                    "OSMExport");
             var dir = new DirectoryInfo(directory);
 
             if (!dir.Exists)
@@ -274,7 +274,7 @@ namespace OSMExport.Systems
             GeoCoordinate maxBounds = GeoCoordinate.FromGameCoordinages(bounds.max.x, bounds.max.z);
 
             string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                         "<osm version=\"0.6\" generator=\"MapMaker\">\n" +
+                         "<osm version=\"0.6\" generator=\"CS2-OSMExport\">\n" +
                          "<bounds minlat=\"" + minBounds.Latitude + "\" minlon=\"" + minBounds.Longitude + "\" maxlat=\"" + maxBounds.Latitude + "\" maxlon=\"" + maxBounds.Longitude + "\"/>\n" +
                          string.Join("\n", nodeXml) + "\n" +
                          string.Join("\n", wayXml) + "\n" +
@@ -347,7 +347,7 @@ namespace OSMExport.Systems
 
                 if (EntityManager.TryGetComponent<RoadData>(prefabRef, out var roadData))
                 {
-                    if (!isTwoWay && aggregateLen < 8)
+                    if (!isTwoWay && aggregateLen < 10)
                     {
                         way.MightBeLink = true;
                     }
