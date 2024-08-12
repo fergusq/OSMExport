@@ -114,6 +114,7 @@ namespace OSMExport.Systems
                         ComponentType.ReadOnly<Game.Buildings.Prison>(),
                         ComponentType.ReadOnly<Game.Buildings.PublicTransportStation>(),
                         ComponentType.ReadOnly<Game.Buildings.Park>(),
+                        ComponentType.ReadOnly<Game.Buildings.GarbageFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.Transformer>(),
                         ComponentType.ReadOnly<Game.Buildings.ElectricityProducer>(),
                     },
@@ -807,6 +808,10 @@ namespace OSMExport.Systems
                 {
                     // TODO: recognize different types of parks
                     tag = "<tag k=\"leisure\" v=\"park\"/>";
+                }
+                else if (EntityManager.HasComponent<Game.Buildings.GarbageFacility>(entity))
+                {
+                    continue; // TODO
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.Transformer>(entity))
                 {
