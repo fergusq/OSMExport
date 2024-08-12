@@ -63,7 +63,7 @@ namespace OSMExport
         {
             return new Dictionary<string, string>
             {
-                { m_Setting.GetSettingsLocaleID(), "OSM Exporter" },
+                { m_Setting.GetSettingsLocaleID(), "OSM Export" },
                 { m_Setting.GetOptionTabLocaleID(Setting.kSection), "Main" },
 
                 { m_Setting.GetOptionGroupLocaleID(Setting.kOSMExportGroup), "OSM Export" },

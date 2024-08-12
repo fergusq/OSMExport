@@ -42,7 +42,6 @@ namespace OSMExport.Systems
                 All = new ComponentType[]
                     {
                         ComponentType.ReadOnly<Game.Net.Edge>(),
-                        ComponentType.ReadOnly<Game.Net.Aggregated>(),
                         ComponentType.ReadOnly<PrefabRef>(),
                         ComponentType.ReadOnly<Game.Net.SubLane>(),
                     },
@@ -113,6 +112,9 @@ namespace OSMExport.Systems
                         ComponentType.ReadOnly<Game.Buildings.FireStation>(),
                         ComponentType.ReadOnly<Game.Buildings.PostFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.Prison>(),
+                        ComponentType.ReadOnly<Game.Buildings.PublicTransportStation>(),
+                        ComponentType.ReadOnly<Game.Buildings.Park>(),
+                        ComponentType.ReadOnly<Game.Buildings.Transformer>(),
                         ComponentType.ReadOnly<Game.Buildings.ElectricityProducer>(),
                     },
                 None = new ComponentType[]
@@ -156,6 +158,7 @@ namespace OSMExport.Systems
             Tertiary,
             Unclassified,
             Residential,
+            Pedestrian,
             Road,
             NotHighway,
         }
@@ -206,6 +209,9 @@ namespace OSMExport.Systems
                         break;
                     case HighwayType.Residential:
                         highwayType = "residential";
+                        break;
+                    case HighwayType.Pedestrian:
+                        highwayType = "pedestrian";
                         break;
                     case HighwayType.Road:
                         highwayType = "road";
@@ -303,7 +309,14 @@ namespace OSMExport.Systems
                 var coordinates = GeoCoordinate.FromGameCoordinages(position.x, position.z);
                 var id = $"10{entity.Index}";
 
-                nodeXml.Add($"<node id=\"{id}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\"></node>");
+                var tags = "";
+
+                if (EntityManager.HasComponent<Game.Net.Roundabout>(entity))
+                {
+                    tags += "<tag k=\"highway\" v=\"mini_roundabout\" />";
+                }
+
+                nodeXml.Add($"<node id=\"{id}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\">{tags}</node>");
             }
 
             m_Logger.Info("Generating net ways...");
@@ -316,12 +329,12 @@ namespace OSMExport.Systems
             {
                 var entity = edgeEntities[i];
                 var edge = EntityManager.GetComponentData<Game.Net.Edge>(entity);
-                var aggregated = EntityManager.GetComponentData<Game.Net.Aggregated>(entity);
+                var isAggregated = EntityManager.TryGetComponent<Game.Net.Aggregated>(entity, out var aggregated);
                 var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
                 var subLanes = EntityManager.GetBuffer<Game.Net.SubLane>(entity, true);
                 var hasOwner = EntityManager.HasComponent<Owner>(entity);
                 var isElevated = EntityManager.TryGetComponent<Game.Net.Elevation>(entity, out var elevation);
-                var aggregateLen = EntityManager.TryGetBuffer<Game.Net.AggregateElement>(aggregated.m_Aggregate, true, out var aggregateElements) ? aggregateElements.Length : 0;
+                var aggregateLen = !isAggregated ? 0 : (EntityManager.TryGetBuffer<Game.Net.AggregateElement>(aggregated.m_Aggregate, true, out var aggregateElements) ? aggregateElements.Length : 0);
 
                 Highway way = new Highway(entity.Index);
 
@@ -355,7 +368,7 @@ namespace OSMExport.Systems
                     int speedLimit = 0;
                     if (roadData.m_SpeedLimit > 40)
                     {
-                        if (roadData.m_SpeedLimit > 40 && !isTwoWay)
+                        if (!isTwoWay && aggregateLen > 4)
                         {
                             way.Type = HighwayType.Motorway;
                         }
@@ -374,22 +387,49 @@ namespace OSMExport.Systems
                     }
                     else if (roadData.m_SpeedLimit > 30)
                     {
-                        way.Type = HighwayType.Primary;
+                        if (!isTwoWay && aggregateLen > 4)
+                        {
+                            way.Type = HighwayType.Trunk;
+                        }
+                        else
+                        {
+                            way.Type = HighwayType.Primary;
+                        }
                         speedLimit = 60;
                     }
                     else if (roadData.m_SpeedLimit > 25)
                     {
-                        way.Type = HighwayType.Secondary;
+                        if (!isTwoWay && aggregateLen > 4)
+                        {
+                            way.Type = HighwayType.Primary;
+                        }
+                        else
+                        {
+                            way.Type = HighwayType.Secondary;
+                        }
                         speedLimit = 50;
                     }
                     else if (roadData.m_SpeedLimit > 20)
                     {
-                        way.Type = HighwayType.Residential;
+
+                        if (!isTwoWay && aggregateLen > 4)
+                        {
+                            way.Type = HighwayType.Secondary;
+                        }
+                        else
+                        {
+                            way.Type = HighwayType.Residential;
+                        }
                         speedLimit = 40;
+                    }
+                    else if (roadData.m_SpeedLimit > 15)
+                    {
+                        way.Type = HighwayType.Residential;
+                        speedLimit = 30;
                     }
                     else if (roadData.m_SpeedLimit > 10)
                     {
-                        way.Type = HighwayType.Residential;
+                        way.Type = HighwayType.Pedestrian;
                         speedLimit = 30;
                     }
                     else
@@ -410,8 +450,11 @@ namespace OSMExport.Systems
                         way.Tags += "<tag k=\"oneway\" v=\"yes\"/>";
                     }
 
-                    var name = m_NameSystem.GetName(aggregated.m_Aggregate);
-                    way.Tags += "<tag k=\"name\" v=\"" + NameToString(name) + "\"/>";
+                    if (isAggregated)
+                    {
+                        var name = m_NameSystem.GetName(aggregated.m_Aggregate);
+                        way.Tags += "<tag k=\"name\" v=\"" + NameToString(name) + "\"/>";
+                    }
                 }
                 else if (EntityManager.TryGetComponent<PathwayData>(prefabRef, out var pathwayData))
                 {
@@ -463,8 +506,11 @@ namespace OSMExport.Systems
                 nodeToHighways[edge.m_Start.Index].Add(way);
                 if (!nodeToHighways.ContainsKey(edge.m_End.Index)) nodeToHighways[edge.m_End.Index] = new List<Highway>();
                 nodeToHighways[edge.m_End.Index].Add(way);
-                if (!aggregateToHighways.ContainsKey(aggregated.m_Aggregate.Index)) aggregateToHighways[aggregated.m_Aggregate.Index] = new List<Highway>();
-                aggregateToHighways[aggregated.m_Aggregate.Index].Add(way);
+                if (isAggregated)
+                {
+                    if (!aggregateToHighways.ContainsKey(aggregated.m_Aggregate.Index)) aggregateToHighways[aggregated.m_Aggregate.Index] = new List<Highway>();
+                    aggregateToHighways[aggregated.m_Aggregate.Index].Add(way);
+                }
 
                 way.NodeIds = new List<int>() { edge.m_Start.Index, edge.m_End.Index };
 
@@ -629,6 +675,7 @@ namespace OSMExport.Systems
                 var tag = "";
                 if (EntityManager.HasComponent<Game.Buildings.School>(entity))
                 {
+                    // TODO: different types of schools
                     tag = "<tag k=\"amenity\" v=\"school\"/>";
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.ParkingFacility>(entity))
@@ -710,7 +757,26 @@ namespace OSMExport.Systems
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.TransportDepot>(entity))
                 {
-                    tag = "<tag k=\"landuse\" v=\"industrial\"/><tag k=\"industrial\" v=\"depot\"/>";
+                    bool isTrainDepot = false;
+                    if (EntityManager.TryGetBuffer<Game.Vehicles.OwnedVehicle>(entity, true, out var ownedVehicles))
+                    {
+                        foreach (var v in ownedVehicles)
+                        {
+                            if (EntityManager.HasComponent<Game.Vehicles.Train>(v.m_Vehicle))
+                            {
+                                isTrainDepot = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isTrainDepot)
+                    {
+                        tag = "<tag k=\"landuse\" v=\"railway\"/><tag k=\"railway\" v=\"depot\"/>";
+                    }
+                    else
+                    {
+                        tag = "<tag k=\"landuse\" v=\"industrial\"/><tag k=\"industrial\" v=\"depot\"/>";
+                    }
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.Hospital>(entity))
                 {
@@ -731,6 +797,20 @@ namespace OSMExport.Systems
                 else if (EntityManager.HasComponent<Game.Buildings.Prison>(entity))
                 {
                     tag = "<tag k=\"amenity\" v=\"prison\"/>";
+                }
+                else if (EntityManager.HasComponent<Game.Buildings.PublicTransportStation>(entity))
+                {
+                    // TODO: recognize different types of stations
+                    tag = "<tag k=\"public_transport\" v=\"station\"/>";
+                }
+                else if (EntityManager.HasComponent<Game.Buildings.Park>(entity))
+                {
+                    // TODO: recognize different types of parks
+                    tag = "<tag k=\"leisure\" v=\"park\"/>";
+                }
+                else if (EntityManager.HasComponent<Game.Buildings.Transformer>(entity))
+                {
+                    tag = "<tag k=\"power\" v=\"substation\"/>";
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.ElectricityProducer>(entity))
                 {
