@@ -42,9 +42,7 @@ See the [OSM wiki page](https://wiki.openstreetmap.org/wiki/Key:highway) for a l
 ### Mapnik
 
 If you know how to do it, you can install [Mapnik](https://wiki.openstreetmap.org/wiki/Mapnik) and use it to serve rendered tiles.
-The installation process is too complicated for me to describe it here.
-However, installing Mapnik to a web server is rewarding, as it allows you to make a web page with an interactive map.
-I highly recommend trying it if you have advanced skills in managing Linux server software.
+This is the most common way to render map tiles on server side, but also the most complex way, so it might be an overkill for rendering CS2 maps.
 
 ## Image sources
 
@@ -60,13 +58,32 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/osm-export.1699087/" />
 	<!--Version of the mod-->
-	<ModVersion Value="1.0" />
+	<ModVersion Value="2.0" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
 	<Dependency Id="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="" />
+	<ChangeLog>
+Added support for:
+
+* Transport stops
+* Warehouses
+* Airport taxiways and runways
+* Different types of transport stations
+* Preliminary work on transport lines
+
+Changed:
+
+* Company names will no longer include their address
+* Increased road curve resolution
+
+Fixed:
+
+* Water body xml errors
+* Duplicate IDs
+* Lane numbers
+	</ChangeLog>
 	<!--ChangeLog>
 	</ChangeLog-->
 	<!--External link. supported types are discord, github, youtube, twitch, x, paypal, patreon, buymeacoffee, kofi, crowdin, gitlab-->

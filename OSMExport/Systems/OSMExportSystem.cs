@@ -4,10 +4,13 @@ using System.IO;
 using System.Linq;
 using Colossal.Entities;
 using Colossal.Logging;
+using Colossal.Mathematics;
 using Colossal.PSI.Environment;
 using Game;
 using Game.Common;
+using Game.Objects;
 using Game.Prefabs;
+using Game.Routes;
 using Game.SceneFlow;
 using Game.Simulation;
 using Game.Tools;
@@ -27,6 +30,8 @@ namespace OSMExport.Systems
         private EntityQuery m_NodeQuery;
         private EntityQuery m_AreaQuery;
         private EntityQuery m_BuildingQuery;
+        private EntityQuery m_TransportStopQuery;
+        private EntityQuery m_TransportLineQuery;
 
         private TerrainSystem m_TerrainSystem;
         private WaterSystem m_WaterSystem;
@@ -99,6 +104,7 @@ namespace OSMExport.Systems
                     {
                         ComponentType.ReadOnly<Game.Buildings.Building>(),
                         ComponentType.ReadOnly<Game.Objects.Transform>(),
+                        ComponentType.ReadOnly<PrefabRef>(),
                     },
                 Any = new ComponentType[]
                     {
@@ -113,10 +119,55 @@ namespace OSMExport.Systems
                         ComponentType.ReadOnly<Game.Buildings.PostFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.Prison>(),
                         ComponentType.ReadOnly<Game.Buildings.PublicTransportStation>(),
+                        ComponentType.ReadOnly<Game.Buildings.CargoTransportStation>(),
                         ComponentType.ReadOnly<Game.Buildings.Park>(),
                         ComponentType.ReadOnly<Game.Buildings.GarbageFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.Transformer>(),
                         ComponentType.ReadOnly<Game.Buildings.ElectricityProducer>(),
+                    },
+                None = new ComponentType[]
+                    {
+                        ComponentType.ReadOnly<Deleted>(),
+                        ComponentType.ReadOnly<Temp>(),
+                        ComponentType.ReadOnly<Hidden>(),
+                    }
+            }
+            );
+            m_TransportStopQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new ComponentType[]
+                    {
+                        ComponentType.ReadOnly<Game.Routes.TransportStop>(),
+                        ComponentType.ReadOnly<Game.Objects.Transform>(),
+                        ComponentType.ReadOnly<PrefabRef>(),
+                    },
+                Any = new ComponentType[]
+                    {
+                        ComponentType.ReadOnly<Game.Routes.BusStop>(),
+                        ComponentType.ReadOnly<Game.Routes.TramStop>(),
+                        ComponentType.ReadOnly<Game.Routes.TaxiStand>(),
+                        ComponentType.ReadOnly<Game.Routes.SubwayStop>(),
+                        ComponentType.ReadOnly<Game.Routes.TrainStop>(),
+                        ComponentType.ReadOnly<Game.Routes.ShipStop>(),
+                        ComponentType.ReadOnly<Game.Routes.AirplaneStop>(),
+                    },
+                None = new ComponentType[]
+                    {
+                        ComponentType.ReadOnly<Deleted>(),
+                        ComponentType.ReadOnly<Temp>(),
+                        ComponentType.ReadOnly<Hidden>(),
+                    }
+            }
+            );
+            m_TransportLineQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new ComponentType[]
+                    {
+                        ComponentType.ReadOnly<Game.Routes.TransportLine>(),
+                        ComponentType.ReadOnly<PrefabRef>(),
+                    },
+                Any = new ComponentType[]
+                    {
                     },
                 None = new ComponentType[]
                     {
@@ -230,7 +281,7 @@ namespace OSMExport.Systems
 
             public void ToXml(List<string> wayXml)
             {
-                var id = $"20{Id}";
+                var id = CreateID(WAY, Id);
                 wayXml.Add($"<way id=\"{id}\" version=\"5\">");
                 foreach (var node in Nodes)
                 {
@@ -247,6 +298,9 @@ namespace OSMExport.Systems
         {
             if (!activated) return;
             activated = false;
+
+            IDs = new Dictionary<string, int>();
+            IdCounter = 10000;
 
             var directory = Path.Combine(
                     EnvPath.kUserDataPath,
@@ -271,6 +325,7 @@ namespace OSMExport.Systems
             AddHighways(nodeXml, wayXml, relationXml);
             AddAreas(nodeXml, wayXml, relationXml);
             AddBuildinds(nodeXml, wayXml, relationXml);
+            AddTransportStops(nodeXml, wayXml, relationXml);
             AddWaterBodies(nodeXml, wayXml, relationXml);
 
             m_Logger.Info("Generating complete xml...");
@@ -301,6 +356,8 @@ namespace OSMExport.Systems
             NativeArray<Entity> nodeEntities = m_NodeQuery.ToEntityArray(Allocator.Temp);
             NativeArray<Entity> edgeEntities = m_EdgeQuery.ToEntityArray(Allocator.Temp);
 
+            int bezierCounter = 0;
+
             m_Logger.Info("Generating net node xml...");
 
             for (int i = 0; i < nodeEntities.Length; i++)
@@ -308,7 +365,7 @@ namespace OSMExport.Systems
                 var entity = nodeEntities[i];
                 var position = EntityManager.GetComponentData<Game.Net.Node>(entity).m_Position;
                 var coordinates = GeoCoordinate.FromGameCoordinages(position.x, position.z);
-                var id = $"10{entity.Index}";
+                var id = CreateID(NODE, entity.Index);
 
                 var tags = "";
 
@@ -352,7 +409,7 @@ namespace OSMExport.Systems
                         }
                         if (EntityManager.TryGetComponent<Game.Net.Lane>(subLane.m_SubLane, out var lane))
                         {
-                            lanes.Add(lane.m_StartNode.GetLaneIndex());
+                            lanes.Add(lane.m_StartNode.GetLaneIndex() & 255);
                         }
                     }
                 }
@@ -442,7 +499,7 @@ namespace OSMExport.Systems
 
                     if (numLanes >= 1)
                     {
-                        way.Tags += $"<!-- <tag k=\"lanes\" v=\"{numLanes}\"/> -->";
+                        way.Tags += $"<tag k=\"lanes\" v=\"{numLanes}\"/>";
                         way.Tags += $"<!-- {string.Join(";", lanes.ToList().Select(s => s.ToString()))} -->";
                     }
 
@@ -483,6 +540,22 @@ namespace OSMExport.Systems
                 {
                     way.Tags += "<tag k=\"power\" v=\"line\"/>";
                 }
+                else if (EntityManager.HasComponent<Game.Net.Taxiway>(entity))
+                {
+                    // Elevated runways are in the air, we don't want them
+                    if (isElevated)
+                    {
+                        continue;
+                    }
+                    if (EntityManager.TryGetComponent<TaxiwayData>(prefabRef, out var taxiwayData) && (taxiwayData.m_Flags & TaxiwayFlags.Runway) != 0)
+                    {
+                        way.Tags += "<tag k=\"aeroway\" v=\"runway\"/>";
+                    }
+                    else
+                    {
+                        way.Tags += "<tag k=\"aeroway\" v=\"taxiway\"/>";
+                    }
+                }
                 else
                 {
                     continue;
@@ -500,8 +573,23 @@ namespace OSMExport.Systems
                     }
                 }
 
-                way.Nodes.Add($"<nd ref=\"10{edge.m_Start.Index}\"/>");
-                way.Nodes.Add($"<nd ref=\"10{edge.m_End.Index}\"/>");
+                way.Nodes.Add($"<nd ref=\"{CreateID(NODE, edge.m_Start.Index)}\"/>");
+
+                if (EntityManager.TryGetComponent<Game.Net.Curve>(entity, out var curve))
+                {
+                    for (int j = 1; j <= 2; j++)
+                    {
+                        float f = 0.3f * j;
+                        var pos = MathUtils.Position(curve.m_Bezier, f);
+                        var coordinates = GeoCoordinate.FromGameCoordinages(pos.x, pos.z);
+                        var id = CreateID(BEZIER_NODE, bezierCounter++);
+
+                        nodeXml.Add($"<node id=\"{id}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\"></node>");
+                        way.Nodes.Add($"<nd ref=\"{id}\"/>");
+                    }
+                }
+
+                way.Nodes.Add($"<nd ref=\"{CreateID(NODE, edge.m_End.Index)}\"/>");
 
                 if (!nodeToHighways.ContainsKey(edge.m_Start.Index)) nodeToHighways[edge.m_Start.Index] = new List<Highway>();
                 nodeToHighways[edge.m_Start.Index].Add(way);
@@ -588,7 +676,7 @@ namespace OSMExport.Systems
                     center /= nodes.Length;
 
                     var coordinates = GeoCoordinate.FromGameCoordinages(center.x, center.z);
-                    var id = $"30{entity.Index}00";
+                    var id = CreateID(AREA, entity.Index, 0);
                     var name = m_NameSystem.GetName(entity);
 
                     nodeXml.Add($"<node id=\"{id}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\">");
@@ -633,7 +721,7 @@ namespace OSMExport.Systems
                         var node = nodes[j];
                         var position = node.m_Position;
                         var coordinates = GeoCoordinate.FromGameCoordinages(position.x, position.z);
-                        var id = $"30{entity.Index}00{j}";
+                        var id = CreateID(AREA, entity.Index, 1, j);
 
                         nodeXml.Add($"<node id=\"{id}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\"></node>");
                     }
@@ -642,15 +730,15 @@ namespace OSMExport.Systems
 
                     // Add the way
 
-                    var wayId = $"30{entity.Index}01";
+                    var wayId = CreateID(AREA, entity.Index, 1);
 
                     wayXml.Add($"<way id=\"{wayId}\" version=\"5\">");
                     for (int j = 0; j < nodes.Length; j++)
                     {
-                        var id = $"30{entity.Index}00{j}";
+                        var id = CreateID(AREA, entity.Index, 1, j);
                         wayXml.Add($"<nd ref=\"{id}\" />");
                     }
-                    wayXml.Add($"<nd ref=\"30{entity.Index}00{0}\" />");
+                    wayXml.Add($"<nd ref=\"{CreateID(AREA, entity.Index, 1, 0)}\" />");
                     wayXml.Add(tag);
                     wayXml.Add("</way>");
                 }
@@ -668,10 +756,12 @@ namespace OSMExport.Systems
             for (int i = 0; i < buildingEntities.Length; i++)
             {
                 var entity = buildingEntities[i];
-                var id = $"60{entity.Index}";
+                var id = CreateID(BUILDING, entity.Index);
                 var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
                 var transform = EntityManager.GetComponentData<Game.Objects.Transform>(entity);
                 var coordinates = GeoCoordinate.FromGameCoordinages(transform.m_Position.x, transform.m_Position.z);
+
+                Entity companyEntity = Entity.Null;
 
                 var tag = "";
                 if (EntityManager.HasComponent<Game.Buildings.School>(entity))
@@ -686,7 +776,28 @@ namespace OSMExport.Systems
                 else if (EntityManager.HasComponent<Game.Buildings.IndustrialProperty>(entity))
                 {
                     // TODO: warehouses
-                    tag = "<tag k=\"landuse\" v=\"industrial\"/><tag k=\"industrial\" v=\"factory\"/>";
+                    if (EntityManager.HasComponent<WarehouseData>(prefabRef))
+                    {
+                        tag = "<tag k=\"landuse\" v=\"industrial\"/><tag k=\"industrial\" v=\"warehouse\"/>";
+                    }
+                    else
+                    {
+                        tag = "<tag k=\"landuse\" v=\"industrial\"/><tag k=\"industrial\" v=\"factory\"/>";
+                    }
+                    if (EntityManager.TryGetBuffer<Game.Buildings.Renter>(entity, true, out var renters) && renters.Length > 0)
+                    {
+                        foreach (var renter in renters)
+                        {
+                            if (EntityManager.TryGetComponent<PrefabRef>(renter, out var renterPrefabRef))
+                            {
+                                if (EntityManager.TryGetComponent<IndustrialProcessData>(renterPrefabRef.m_Prefab, out var industrialProcessData))
+                                {
+                                    companyEntity = renter.m_Renter;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.CommercialProperty>(entity))
                 {
@@ -699,6 +810,7 @@ namespace OSMExport.Systems
                             {
                                 if (EntityManager.TryGetComponent<IndustrialProcessData>(renterPrefabRef.m_Prefab, out var industrialProcessData))
                                 {
+                                    companyEntity = renter.m_Renter;
                                     switch (industrialProcessData.m_Output.m_Resource)
                                     {
                                         case Game.Economy.Resource.Beverages:
@@ -801,8 +913,80 @@ namespace OSMExport.Systems
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.PublicTransportStation>(entity))
                 {
-                    // TODO: recognize different types of stations
-                    tag = "<tag k=\"public_transport\" v=\"station\"/>";
+                    bool isHarbour = false;
+                    bool isSubwayStation = false;
+                    bool isTrainStation = false;
+                    bool isAirport = false;
+                    bool isBusStation = false;
+                    if (EntityManager.TryGetBuffer<Game.Objects.SubObject>(entity, true, out var subObjects))
+                    {
+                        foreach (var v in subObjects)
+                        {
+                            if (EntityManager.HasComponent<Game.Routes.ShipStop>(v.m_SubObject))
+                            {
+                                isHarbour = true;
+                            }
+                            if (EntityManager.HasComponent<Game.Routes.SubwayStop>(v.m_SubObject))
+                            {
+                                isHarbour = true;
+                            }
+                            if (EntityManager.HasComponent<Game.Routes.TrainStop>(v.m_SubObject))
+                            {
+                                isTrainStation = true;
+                            }
+                            if (EntityManager.HasComponent<Game.Routes.AirplaneStop>(v.m_SubObject))
+                            {
+                                isAirport = true;
+                            }
+                            if (EntityManager.HasComponent<Game.Routes.BusStop>(v.m_SubObject))
+                            {
+                                isBusStation = true;
+                            }
+                        }
+                    }
+                    if (isAirport)
+                    {
+                        tag = "<tag k=\"aeroway\" v=\"aerodrome\" />";
+                    }
+                    else if (isTrainStation || isSubwayStation)
+                    {
+                        tag = "<tag k=\"public_transport\" v=\"station\" /><tag k=\"railway\" v=\"station\" /><tag k=\"landuse\" v=\"railway\" />";
+                    }
+                    else if (isBusStation)
+                    {
+                        tag = "<tag k=\"public_transport\" v=\"station\" /><tag k=\"amenity\" v=\"bus_station\" />";
+                    }
+                    else
+                    {
+                        tag = "<tag k=\"public_transport\" v=\"station\" />";
+                    }
+                }
+                else if (EntityManager.HasComponent<Game.Buildings.CargoTransportStation>(entity))
+                {
+                    bool isCargoHarbour = false;
+                    bool isTrainTerminal = false;
+                    if (EntityManager.TryGetBuffer<Game.Objects.SubObject>(entity, true, out var subObjects))
+                    {
+                        foreach (var v in subObjects)
+                        {
+                            if (EntityManager.HasComponent<Game.Routes.ShipStop>(v.m_SubObject))
+                            {
+                                isCargoHarbour = true;
+                            }
+                            if (EntityManager.HasComponent<Game.Routes.TrainStop>(v.m_SubObject))
+                            {
+                                isTrainTerminal = true;
+                            }
+                        }
+                    }
+                    if (isCargoHarbour)
+                    {
+                        tag = "<tag k=\"landuse\" v=\"industrial\"/><tag k=\"industrial\" v=\"port\"/><tag k=\"port\" v=\"cargo\"/>";
+                    }
+                    else if (isTrainTerminal)
+                    {
+                        tag = "<tag k=\"landuse\" v=\"railway\"/><tag k=\"railway\" v=\"station\"/>";
+                    }
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.Park>(entity))
                 {
@@ -826,7 +1010,7 @@ namespace OSMExport.Systems
                     continue;
                 }
 
-                var name = m_NameSystem.GetName(entity);
+                var name = m_NameSystem.GetName(companyEntity != Entity.Null ? companyEntity : entity);
                 tag += $"<tag k=\"name\" v=\"{NameToString(name)}\"/>";
 
                 if (EntityManager.TryGetComponent<BuildingData>(prefabRef, out var buildingData))
@@ -844,21 +1028,26 @@ namespace OSMExport.Systems
                     var corner3 = GeoCoordinate.FromGameCoordinages(corner3pos.x, corner3pos.z);
                     var corner4 = GeoCoordinate.FromGameCoordinages(corner4pos.x, corner4pos.z);
 
-                    nodeXml.Add($"<node id=\"{id}001\" lat=\"{corner1.Latitude}\" lon=\"{corner1.Longitude}\" version=\"1\" />");
-                    nodeXml.Add($"<node id=\"{id}002\" lat=\"{corner2.Latitude}\" lon=\"{corner2.Longitude}\" version=\"1\" />");
-                    nodeXml.Add($"<node id=\"{id}003\" lat=\"{corner3.Latitude}\" lon=\"{corner3.Longitude}\" version=\"1\" />");
-                    nodeXml.Add($"<node id=\"{id}004\" lat=\"{corner4.Latitude}\" lon=\"{corner4.Longitude}\" version=\"1\" />");
+                    var id1 = CreateID(BUILDING, entity.Index, 0, 1);
+                    var id2 = CreateID(BUILDING, entity.Index, 0, 2);
+                    var id3 = CreateID(BUILDING, entity.Index, 0, 3);
+                    var id4 = CreateID(BUILDING, entity.Index, 0, 4);
+
+                    nodeXml.Add($"<node id=\"{id1}\" lat=\"{corner1.Latitude}\" lon=\"{corner1.Longitude}\" version=\"1\" />");
+                    nodeXml.Add($"<node id=\"{id2}\" lat=\"{corner2.Latitude}\" lon=\"{corner2.Longitude}\" version=\"1\" />");
+                    nodeXml.Add($"<node id=\"{id3}\" lat=\"{corner3.Latitude}\" lon=\"{corner3.Longitude}\" version=\"1\" />");
+                    nodeXml.Add($"<node id=\"{id4}\" lat=\"{corner4.Latitude}\" lon=\"{corner4.Longitude}\" version=\"1\" />");
 
                     // Add the way
 
-                    var wayId = $"60{entity.Index}01";
+                    var wayId = CreateID(BUILDING, entity.Index, 1);
 
                     wayXml.Add($"<way id=\"{wayId}\" version=\"5\">");
-                    wayXml.Add($"<nd ref=\"{id}001\" />");
-                    wayXml.Add($"<nd ref=\"{id}002\" />");
-                    wayXml.Add($"<nd ref=\"{id}003\" />");
-                    wayXml.Add($"<nd ref=\"{id}004\" />");
-                    wayXml.Add($"<nd ref=\"{id}001\" />");
+                    wayXml.Add($"<nd ref=\"{id1}\" />");
+                    wayXml.Add($"<nd ref=\"{id2}\" />");
+                    wayXml.Add($"<nd ref=\"{id3}\" />");
+                    wayXml.Add($"<nd ref=\"{id4}\" />");
+                    wayXml.Add($"<nd ref=\"{id1}\" />");
                     wayXml.Add(tag);
                     wayXml.Add("</way>");
                 }
@@ -869,6 +1058,181 @@ namespace OSMExport.Systems
             }
 
             buildingEntities.Dispose();
+        }
+        private void AddTransportStops(List<string> nodeXml, List<string> wayXml, List<string> relationXml)
+        {
+            m_Logger.Info("Generating transport stops...");
+
+            NativeArray<Entity> stopEntities = m_TransportStopQuery.ToEntityArray(Allocator.Temp);
+
+            for (int i = 0; i < stopEntities.Length; i++)
+            {
+                var entity = stopEntities[i];
+                var id = CreateID(TRANSPORT_STOP, entity.Index);
+                var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
+                var isOwned = EntityManager.HasComponent<Owner>(entity);
+                var transform = EntityManager.GetComponentData<Game.Objects.Transform>(entity);
+                var coordinates = GeoCoordinate.FromGameCoordinages(transform.m_Position.x, transform.m_Position.z);
+
+                if (EntityManager.TryGetComponent<TransportStopData>(prefabRef.m_Prefab, out var transportStopData))
+                {
+                    // Check if we have a cargo stop
+                    if (!transportStopData.m_PassengerTransport)
+                    {
+                        continue;
+                    }
+                }
+
+                string tag = "<tag k=\"public_transport\" v=\"platform\" />";
+                if (EntityManager.HasComponent<Game.Routes.BusStop>(entity))
+                {
+                    tag += isOwned ? "<tag k=\"highway\" v=\"platform\" />" : "<tag k=\"highway\" v=\"bus_stop\" />";
+                }
+                else if (EntityManager.HasComponent<Game.Routes.TaxiStand>(entity))
+                {
+                    tag += "<tag k=\"amenity\" v=\"taxi\" />";
+                }
+                else if (EntityManager.HasComponent<Game.Routes.TramStop>(entity) || EntityManager.HasComponent<Game.Routes.TrainStop>(entity) || EntityManager.HasComponent<Game.Routes.SubwayStop>(entity))
+                {
+                    tag += "<tag k=\"railway\" v=\"platform\" />";
+                }
+                else
+                {
+                    continue;
+                }
+
+                var name = m_NameSystem.GetName(entity);
+                tag += $"<tag k=\"name\" v=\"{NameToString(name)}\"/>";
+
+                nodeXml.Add($"<node id=\"{id}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\">{tag}</node>");
+            }
+
+            stopEntities.Dispose();
+
+            m_Logger.Info("Generating transport lines...");
+
+            NativeArray<Entity> lineEntities = m_TransportLineQuery.ToEntityArray(Allocator.Temp);
+
+            for (int i = 0; i < lineEntities.Length; i++)
+            {
+                var entity = lineEntities[i];
+                var id = CreateID(TRANSPORT_LINE, entity.Index);
+                var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
+
+                string type = "";
+                if (EntityManager.TryGetComponent<TransportLineData>(prefabRef.m_Prefab, out var transportLineData))
+                {
+                    // Check if we have a cargo line (TODO should these be supported?)
+                    if (!transportLineData.m_PassengerTransport)
+                    {
+                        continue;
+                    }
+
+                    if (transportLineData.m_TransportType == TransportType.Bus)
+                    {
+                        type = "bus";
+                    }
+                    else if (transportLineData.m_TransportType == TransportType.Tram)
+                    {
+                        type = "tram";
+                    }
+                    else if (transportLineData.m_TransportType == TransportType.Train)
+                    {
+                        type = "train";
+                    }
+                    else if (transportLineData.m_TransportType == TransportType.Subway)
+                    {
+                        type = "subway";
+                    }
+                }
+
+                // Color
+                string colorCode = "#000000";
+                if (EntityManager.TryGetComponent<Game.Routes.Color>(entity, out var color))
+                {
+                    colorCode = "#" + ColorUtility.ToHtmlStringRGB(color.m_Color);
+                }
+
+                // Make the actual OSM relation
+                var members = new List<string>();
+
+                if (EntityManager.TryGetBuffer<Game.Routes.RouteWaypoint>(entity, true, out var routeWaypoints))
+                {
+                    foreach (var waypoint in routeWaypoints)
+                    {
+                        if (EntityManager.TryGetComponent<Game.Routes.Connected>(waypoint.m_Waypoint, out var connected))
+                        {
+                            members.Add($"<member type=\"node\" ref=\"{CreateID(TRANSPORT_STOP, connected.m_Connected.Index)}\" role=\"platform\" />");
+                        }
+                    }
+                }
+
+                var hasRouteSegments = EntityManager.TryGetBuffer<Game.Routes.RouteSegment>(entity, true, out var routeSegments);
+
+                if (hasRouteSegments)
+                {
+                    foreach (var segment in routeSegments)
+                    {
+                        if (EntityManager.TryGetBuffer<Game.Pathfind.PathElement>(segment.m_Segment, true, out var pathElements))
+                        {
+                            foreach (var pathElement in pathElements)
+                            {
+                                if (EntityManager.TryGetComponent<Owner>(pathElement.m_Target, out var owner))
+                                {
+                                    members.Add($"<member type=\"way\" ref=\"{CreateID(WAY, owner.m_Owner.Index)}\" />");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (members.Count > 0)
+                {
+                    relationXml.Add($"<relation id=\"{CreateID(TRANSPORT_LINE, entity.Index, 0)}\" version=\"7\">");
+                    relationXml.AddRange(members);
+                    relationXml.Add("</relation>");
+                }
+
+                // Make a non-standard way for easily displaying the route in Maperitive
+                if (false && hasRouteSegments)
+                {
+                    foreach (var segment in routeSegments)
+                    {
+                        if (EntityManager.TryGetBuffer<Game.Routes.CurveElement>(segment.m_Segment, true, out var curveElements))
+                        {
+                            if (curveElements.Length > 0)
+                            {
+                                var curvePoints = new List<(float, float)>
+                                {
+                                    (curveElements[0].m_Curve.a.x, curveElements[0].m_Curve.a.z)
+                                };
+                                foreach (var curveElement in curveElements)
+                                {
+                                    curvePoints.Add((curveElement.m_Curve.d.x, curveElement.m_Curve.d.z));
+                                }
+
+                                var nodeRefs = new List<string>();
+                                for (int j = 0; j < curvePoints.Count; j++)
+                                {
+                                    var coordinates = GeoCoordinate.FromGameCoordinages(curvePoints[j].Item1, curvePoints[j].Item2);
+                                    var curvePointId = CreateID(TRANSPORT_LINE, entity.Index, 1, j);
+                                    nodeXml.Add($"<node id=\"{curvePointId}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\"></node>");
+                                    nodeRefs.Add($"<nd ref=\"{curvePointId}\" />");
+                                }
+
+                                var wayId = CreateID(TRANSPORT_LINE, entity.Index, 1);
+                                wayXml.Add($"<way id=\"{wayId}\" version=\"5\">");
+                                wayXml.AddRange(nodeRefs);
+                                wayXml.Add($"<tag k=\"osm_export_route\" v=\"{type}\" />");
+                                wayXml.Add($"<tag k=\"osm_export_route_color\" v=\"{color}\" />");
+                                wayXml.Add("</way>");
+                            }
+                        }
+                    }
+                }
+            }
+
+            lineEntities.Dispose();
         }
 
         private void AddWaterBodies(List<string> nodeXml, List<string> wayXml, List<string> relationXml)
@@ -1088,7 +1452,7 @@ namespace OSMExport.Systems
                     innerEdgeSorted.Add(currentEdge);
                 }
 
-
+                sortedInnerEdges = sortedInnerEdges.Where(s => s.Count > 2).ToList();
 
                 m_Logger.Info($"Sorted 1 outer edge and {sortedInnerEdges.Count} inner edges for wb {wb}!");
 
@@ -1104,72 +1468,56 @@ namespace OSMExport.Systems
                     var x = bounds.min.x + node.Item1 * rectSize / 3;
                     var z = bounds.min.z + node.Item2 * rectSize / 3;
                     var coordinates = GeoCoordinate.FromGameCoordinages(x, z);
-                    var id = $"40{wb}00{node.Item1}00{node.Item2}";
+                    var id = CreateID(WATER, wb, 0, node.Item1, node.Item2);
 
                     nodeXml.Add($"<node id=\"{id}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\" />");
                 }
 
-                wayXml.Add("<way id=\"40" + wb + "01\" version=\"5\">");
+                var wayId = CreateID(WATER, wb, 1, 0);
+                wayXml.Add($"<way id=\"{wayId}\" version=\"5\">");
                 foreach (var node in sortedOuterEdges)
                 {
-                    wayXml.Add($"<nd ref=\"40{wb}00{node.Item1}00{node.Item2}\" />");
+                    wayXml.Add($"<nd ref=\"{CreateID(WATER, wb, 0, node.Item1, node.Item2)}\" />");
                 }
-                wayXml.Add($"<nd ref=\"40{wb}00{sortedOuterEdges[0].Item1}00{sortedOuterEdges[0].Item2}\" />");
+                wayXml.Add($"<nd ref=\"{CreateID(WATER, wb, 0, sortedOuterEdges[0].Item1, sortedOuterEdges[0].Item2)}\" />");
+
+                if (sortedInnerEdges.Count == 0)
+                {
+                    wayXml.Add("<tag k=\"natural\" v=\"water\" />");
+                }
+
                 wayXml.Add("</way>");
 
-                for (int i = 0; i < sortedInnerEdges.Count; i++)
-                {
-                    wayXml.Add("<way id=\"40" + wb + "0" + (i + 2) + "\" version=\"5\">");
-                    foreach (var node in sortedInnerEdges[i])
-                    {
-                        wayXml.Add($"<nd ref=\"40{wb}00{node.Item1}00{node.Item2}\" />");
-                    }
-                    wayXml.Add($"<nd ref=\"40{wb}00{sortedInnerEdges[i][0].Item1}00{sortedInnerEdges[i][0].Item2}\" />");
-                    wayXml.Add("</way>");
-                }
-
-                // Add the multipolygon relation
-
-                relationXml.Add("<relation id=\"40" + wb + "0\" version=\"7\">");
-                relationXml.Add("<member type=\"way\" ref=\"40" + wb + "01\" role=\"outer\" />");
-                for (int i = 0; i < sortedInnerEdges.Count; i++)
-                {
-                    relationXml.Add("<member type=\"way\" ref=\"40" + wb + "0" + (i + 2) + "\" role=\"inner\" />");
-                }
-                relationXml.Add("<tag k=\"natural\" v=\"water\" />");
                 if (sortedInnerEdges.Count > 0)
                 {
-                    relationXml.Add("<tag k=\"type\" v=\"multipolygon\" />");
+                    for (int i = 0; i < sortedInnerEdges.Count; i++)
+                    {
+                        wayXml.Add($"<way id=\"{CreateID(WATER, wb, 1, i + 1)}\" version=\"5\">");
+                        foreach (var node in sortedInnerEdges[i])
+                        {
+                            wayXml.Add($"<nd ref=\"{CreateID(WATER, wb, 0, node.Item1, node.Item2)}\" />");
+                        }
+                        wayXml.Add($"<nd ref=\"{CreateID(WATER, wb, 0, sortedInnerEdges[i][0].Item1, sortedInnerEdges[i][0].Item2)}\" />");
+                        wayXml.Add("</way>");
+                    }
+
+                    // Add the multipolygon relation
+
+                    var relationId = CreateID(WATER, wb, 2);
+                    relationXml.Add($"<relation id=\"{relationId}\" version=\"7\">");
+                    relationXml.Add($"<member type=\"way\" ref=\"{CreateID(WATER, wb, 1, 0)}\" role=\"outer\" />");
+                    for (int i = 0; i < sortedInnerEdges.Count; i++)
+                    {
+                        relationXml.Add($"<member type=\"way\" ref=\"{CreateID(WATER, wb, 1, i + 1)}\" role=\"inner\" />");
+                    }
+                    relationXml.Add("<tag k=\"natural\" v=\"water\" />");
+                    if (sortedInnerEdges.Count > 0)
+                    {
+                        relationXml.Add("<tag k=\"type\" v=\"multipolygon\" />");
+                    }
+                    relationXml.Add("</relation>");
                 }
-                relationXml.Add("</relation>");
             }
-
-            // Add coastline around the whole map
-
-            /*m_Logger.Info("Generating coastline...");
-
-            List<string> coastlineXml = new List<string>();
-
-            GeoCoordinate coastlineTopLeft = GeoCoordinate.FromGameCoordinages(bounds.min.x, bounds.min.z);
-            GeoCoordinate coastlineTopRight = GeoCoordinate.FromGameCoordinages(bounds.max.x, bounds.min.z);
-            GeoCoordinate coastlineBottomRight = GeoCoordinate.FromGameCoordinages(bounds.max.x, bounds.max.z);
-            GeoCoordinate coastlineBottomLeft = GeoCoordinate.FromGameCoordinages(bounds.min.x, bounds.max.z);
-
-            coastlineXml.Add($"<node id=\"500000\" lat=\"{coastlineTopLeft.Latitude}\" lon=\"{coastlineTopLeft.Longitude}\" version=\"1\" />");
-            coastlineXml.Add($"<node id=\"500001\" lat=\"{coastlineTopRight.Latitude}\" lon=\"{coastlineTopRight.Longitude}\" version=\"1\" />");
-            coastlineXml.Add($"<node id=\"500002\" lat=\"{coastlineBottomRight.Latitude}\" lon=\"{coastlineBottomRight.Longitude}\" version=\"1\" />");
-            coastlineXml.Add($"<node id=\"500003\" lat=\"{coastlineBottomLeft.Latitude}\" lon=\"{coastlineBottomLeft.Longitude}\" version=\"1\" />");
-
-            coastlineXml.Add("<way id=\"500004\" version=\"5\">");
-            coastlineXml.Add("<nd ref=\"500000\" />");
-            coastlineXml.Add("<nd ref=\"500001\" />");
-            coastlineXml.Add("<nd ref=\"500002\" />");
-            coastlineXml.Add("<nd ref=\"500003\" />");
-            coastlineXml.Add("<nd ref=\"500000\" />");
-            coastlineXml.Add("<tag k=\"natural\" v=\"coastline\" />");
-            coastlineXml.Add("</way>");
-
-            terrainXml.AddRange(coastlineXml);*/
         }
 
         private bool IsUnderwater(WaterSurfaceData waterSurfaceData, TerrainHeightData terrainHeightData, float3 position, out float height, out float depth)
@@ -1186,6 +1534,11 @@ namespace OSMExport.Systems
             var nameType = (NameSystem.NameType)name.GetType().GetField("m_NameType", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(name);
             var nameArgs = (string[])name.GetType().GetField("m_NameArgs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(name);
 
+            if (nameID == null)
+            {
+                return "";
+            }
+
             var output = nameID;
             if (nameType == NameSystem.NameType.Localized)
             {
@@ -1196,9 +1549,13 @@ namespace OSMExport.Systems
             }
             else if (nameType == NameSystem.NameType.Formatted)
             {
+                if (nameArgs == null)
+                {
+                    nameArgs = new string[0];
+                }
                 for (int i = 0; i < nameArgs.Length; i++)
                 {
-                    if (GameManager.instance.localizationManager.activeDictionary.TryGetValue(nameArgs[i], out var localizedArg))
+                    if (nameArgs[i] != null && GameManager.instance.localizationManager.activeDictionary.TryGetValue(nameArgs[i], out var localizedArg))
                     {
                         nameArgs[i] = localizedArg;
                     }
@@ -1207,7 +1564,10 @@ namespace OSMExport.Systems
                 {
                     for (int i = 0; i < nameArgs.Length - 1; i += 2)
                     {
-                        localized = localized.Replace("{" + nameArgs[i] + "}", nameArgs[i + 1]);
+                        if (nameArgs[i] != null && nameArgs[i + 1] != null)
+                        {
+                            localized = localized.Replace("{" + nameArgs[i] + "}", nameArgs[i + 1]);
+                        }
                     }
                     output = localized;
                 }
@@ -1221,6 +1581,35 @@ namespace OSMExport.Systems
             quaternion p = new quaternion(0, point.x, point.y, point.z);
             quaternion qi = new quaternion(q.value.x, -q.value.y, -q.value.z, -q.value.w);
             return math.mul(math.mul(q, p), qi).value.yzw;
+        }
+
+        private const int NODE = 10;
+        private const int BEZIER_NODE = 11;
+        private const int WAY = 20;
+        private const int AREA = 30;
+        private const int BUILDING = 60;
+        private const int TRANSPORT_STOP = 70;
+        private const int TRANSPORT_LINE = 80;
+        private const int WATER = 40;
+
+        private static Dictionary<string, int> IDs;
+        private static int IdCounter = 0;
+
+        private static string CreateID(params int[] parts)
+        {
+            string ans = "";
+            foreach (int part in parts)
+            {
+                var partStr = part.ToString();
+                var len = partStr.Length.ToString("00");
+                ans += len + partStr;
+            }
+            if (IDs.ContainsKey(ans))
+            {
+                return IDs[ans].ToString();
+            }
+            IDs[ans] = ++IdCounter;
+            return IdCounter.ToString();
         }
     }
 }
