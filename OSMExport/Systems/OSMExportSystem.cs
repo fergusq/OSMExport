@@ -112,6 +112,7 @@ namespace OSMExport.Systems
                         ComponentType.ReadOnly<Game.Buildings.ParkingFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.IndustrialProperty>(),
                         ComponentType.ReadOnly<Game.Buildings.CommercialProperty>(),
+                        ComponentType.ReadOnly<Game.Buildings.ResidentialProperty>(),
                         ComponentType.ReadOnly<Game.Buildings.TransportDepot>(),
                         ComponentType.ReadOnly<Game.Buildings.Hospital>(),
                         ComponentType.ReadOnly<Game.Buildings.PoliceStation>(),
@@ -762,6 +763,7 @@ namespace OSMExport.Systems
                 var coordinates = GeoCoordinate.FromGameCoordinages(transform.m_Position.x, transform.m_Position.z);
 
                 Entity companyEntity = Entity.Null;
+                bool showName = true;
 
                 var tag = "";
                 if (EntityManager.HasComponent<Game.Buildings.School>(entity))
@@ -867,6 +869,12 @@ namespace OSMExport.Systems
                             }
                         }
                     }
+                    tag += "<tag k=\"landuse\" v=\"commercial\" />";
+                }
+                else if (EntityManager.HasComponent<Game.Buildings.ResidentialProperty>(entity))
+                {
+                    tag = "<tag k=\"landuse\" v=\"residential\" />";
+                    showName = false;
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.TransportDepot>(entity))
                 {
@@ -995,7 +1003,8 @@ namespace OSMExport.Systems
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.GarbageFacility>(entity))
                 {
-                    continue; // TODO
+                    // TODO: different types of garbage facilities
+                    tag = "<tag k=\"landuse\" v=\"industrial\"/>";
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.Transformer>(entity))
                 {
@@ -1010,8 +1019,11 @@ namespace OSMExport.Systems
                     continue;
                 }
 
-                var name = m_NameSystem.GetName(companyEntity != Entity.Null ? companyEntity : entity);
-                tag += $"<tag k=\"name\" v=\"{NameToString(name)}\"/>";
+                if (showName)
+                {
+                    var name = m_NameSystem.GetName(companyEntity != Entity.Null ? companyEntity : entity);
+                    tag += $"<tag k=\"name\" v=\"{NameToString(name)}\"/>";
+                }
 
                 if (EntityManager.TryGetComponent<BuildingData>(prefabRef, out var buildingData))
                 {

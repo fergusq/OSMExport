@@ -51,14 +51,15 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<!--Thumbnail-->
 	<Thumbnail Value="Properties/Thumbnail.png" />
 	<!--Screenshot, can be set multiple times-->
-	<Screenshot Value="Properties/Screenshot.png" />
-	<Screenshot Value="Properties/Screenshot2.png" />
+	<Screenshot Value="Properties/Screenshot-maperitive.png" />
+	<Screenshot Value="Properties/Screenshot-tilemaker.png" />
+	<Screenshot Value="Properties/Screenshot-cs2.png" />
 	<!--Tag, can be set multiple times-->
 	<Tag Value="Code Mod" />
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/osm-export.1699087/" />
 	<!--Version of the mod-->
-	<ModVersion Value="2.0" />
+	<ModVersion Value="3.0" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -67,22 +68,9 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<ChangeLog>
 Added support for:
 
-* Transport stops
-* Warehouses
-* Airport taxiways and runways
-* Different types of transport stations
-* Preliminary work on transport lines
-
-Changed:
-
-* Company names will no longer include their address
-* Increased road curve resolution
-
-Fixed:
-
-* Water body xml errors
-* Duplicate IDs
-* Lane numbers
+* Commercial landuse
+* Residential landuse
+* Added garbage facilities as landuse=industrial
 	</ChangeLog>
 	<!--ChangeLog>
 	</ChangeLog-->
