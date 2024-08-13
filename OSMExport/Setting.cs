@@ -22,6 +22,19 @@ namespace OSMExport
         }
 
         [SettingsUISection(kSection, kOSMExportGroup)]
+        public OSMExportSystem.Direction NorthOverride
+        {
+            get
+            {
+                return OSMExportSystem.NorthOverride;
+            }
+            set
+            {
+                OSMExportSystem.NorthOverride = value;
+            }
+        }
+
+        [SettingsUISection(kSection, kOSMExportGroup)]
         [SettingsUITextInput]
         public string FileName
         {
@@ -40,7 +53,7 @@ namespace OSMExport
         {
             set
             {
-                OSMExportSystem.activated = true;
+                OSMExportSystem.Activated = true;
             }
         }
 
@@ -67,6 +80,14 @@ namespace OSMExport
                 { m_Setting.GetOptionTabLocaleID(Setting.kSection), "Main" },
 
                 { m_Setting.GetOptionGroupLocaleID(Setting.kOSMExportGroup), "OSM Export" },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.NorthOverride)), "North override" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.NorthOverride)), $"Select which direction will be north in the OSM file. For example, setting this to West will rotate the map 90° clockwise." },
+
+                { m_Setting.GetEnumValueLocaleID(OSMExportSystem.Direction.North), "North (0°)" },
+                { m_Setting.GetEnumValueLocaleID(OSMExportSystem.Direction.West), "West (90°)" },
+                { m_Setting.GetEnumValueLocaleID(OSMExportSystem.Direction.South), "South (180°)" },
+                { m_Setting.GetEnumValueLocaleID(OSMExportSystem.Direction.East), "East (270°)" },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.FileName)), "Output file name" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.FileName)), $"The file name should have the .osm file suffix." },

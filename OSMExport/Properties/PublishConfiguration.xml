@@ -39,10 +39,9 @@ Assume you want to change the type of a road from residential road to primary ro
 Open the OSM file in JOSM, find the correct road segment ("way" in OSM talk) and change its highway tag from highway=residential to highway=primary.
 See the [OSM wiki page](https://wiki.openstreetmap.org/wiki/Key:highway) for a list of all road types.
 
-### Mapnik
+### Tilemaker
 
-If you know how to do it, you can install [Mapnik](https://wiki.openstreetmap.org/wiki/Mapnik) and use it to serve rendered tiles.
-This is the most common way to render map tiles on server side, but also the most complex way, so it might be an overkill for rendering CS2 maps.
+[Tilemaker](https://github.com/systemed/tilemaker) can render OSM files to vector tile formats. It produces a nice Google Maps-ish look for the map.
 
 ## Image sources
 
@@ -59,18 +58,14 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/osm-export.1699087/" />
 	<!--Version of the mod-->
-	<ModVersion Value="3.0" />
+	<ModVersion Value="3.1" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
 	<Dependency Id="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
 	<ChangeLog>
-Added support for:
-
-* Commercial landuse
-* Residential landuse
-* Added garbage facilities as landuse=industrial
+Added the "North override" option, which can be used to rotate the map.
 	</ChangeLog>
 	<!--ChangeLog>
 	</ChangeLog-->

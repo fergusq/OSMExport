@@ -8,9 +8,7 @@ using Colossal.Mathematics;
 using Colossal.PSI.Environment;
 using Game;
 using Game.Common;
-using Game.Objects;
 using Game.Prefabs;
-using Game.Routes;
 using Game.SceneFlow;
 using Game.Simulation;
 using Game.Tools;
@@ -22,9 +20,20 @@ using UnityEngine;
 
 namespace OSMExport.Systems
 {
-    internal partial class OSMExportSystem : GameSystemBase
+    public partial class OSMExportSystem : GameSystemBase
     {
-        internal static bool activated;
+        internal static bool Activated;
+
+        public enum Direction
+        {
+            North,
+            East,
+            South,
+            West
+        }
+
+        internal static string FileName = "export.osm";
+        internal static Direction NorthOverride = Direction.North;
 
         private EntityQuery m_EdgeQuery;
         private EntityQuery m_NodeQuery;
@@ -198,7 +207,20 @@ namespace OSMExport.Systems
 
             public static GeoCoordinate FromGameCoordinages(float x, float z)
             {
-                return new GeoCoordinate(-x / 111_000, z / 111_000);
+                switch (NorthOverride)
+                {
+                    case Direction.North:
+                        return new GeoCoordinate(x / 111_000, -z / 111_000);
+                    case Direction.South:
+                        return new GeoCoordinate(-x / 111_000, z / 111_000);
+                    case Direction.West:
+                        return new GeoCoordinate(z / 111_000, x / 111_000);
+                    case Direction.East:
+                        return new GeoCoordinate(-z / 111_000, -x / 111_000);
+                    default:
+                        return new GeoCoordinate(x / 111_000, -z / 111_000);
+                }
+                
             }
         }
 
@@ -293,12 +315,10 @@ namespace OSMExport.Systems
             }
         }
 
-        public static string FileName = "export.osm";
-
         protected override void OnUpdate()
         {
-            if (!activated) return;
-            activated = false;
+            if (!Activated) return;
+            Activated = false;
 
             IDs = new Dictionary<string, int>();
             IdCounter = 10000;
