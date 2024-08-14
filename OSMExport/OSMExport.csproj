@@ -14,6 +14,15 @@
 	<Import Project="$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))\Mod.targets" />
 
 	<ItemGroup>
+		<Reference Include="Osm">
+			<HintPath>Libs\Osm.dll</HintPath>
+		</Reference>
+		<!--
+		<PackageReference Include="OsmSharp" Version="7.0.0-pre022" />
+		<PackageReference Include="protobuf-net" Version="3.2.30" />-->
+	</ItemGroup>
+
+	<ItemGroup>
 		<Reference Include="Game">
 			<Private>false</Private>
 		</Reference>
@@ -76,6 +85,10 @@
 	<ItemGroup>
 		<None Include="$(ModPropsFile)" Link="Properties\Mod.props" />
 		<None Include="$(ModTargetsFile)" Link="Properties\Mod.targets" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Libs\" />
 	</ItemGroup>
 
 </Project>
