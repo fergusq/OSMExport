@@ -1744,7 +1744,6 @@ namespace OSMExport.Systems
                     output = localized;
                 }
             }
-            output = output.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
             return output;
         }
 
