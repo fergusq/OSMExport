@@ -15,6 +15,7 @@ namespace OSMExport
         public const string kSection = "Main";
 
         public const string kOSMExportGroup = "OSM Export";
+        public const string kOSMExportButtonGroup = "OSM Export Buttons";
 
         public Setting(IMod mod) : base(mod)
         {
@@ -61,6 +62,7 @@ namespace OSMExport
         }
 
         [SettingsUISection(kSection, kOSMExportGroup)]
+        [SettingsUIButtonGroup(kOSMExportButtonGroup)]
         public bool ExportOSM
         {
             set
@@ -71,6 +73,8 @@ namespace OSMExport
         }
 
         [SettingsUISection(kSection, kOSMExportGroup)]
+        [SettingsUIButtonGroup(kOSMExportButtonGroup)]
+        [SettingsUIHidden]
         public bool ExportPBF
         {
             set

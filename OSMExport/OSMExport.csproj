@@ -4,6 +4,7 @@
 		<OutputType>Library</OutputType>
 		<TargetFramework>net472</TargetFramework>
 		<Configurations>Debug;Release</Configurations>
+		<LangVersion>10.0</LangVersion>
 		
 		<!--The file where mod information which is required for publishing mod on PDX mods are stored-->
 		<PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>
@@ -14,10 +15,10 @@
 	<Import Project="$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))\Mod.targets" />
 
 	<ItemGroup>
-		<Reference Include="Osm">
+		<!--<Reference Include="Osm">
 			<HintPath>Libs\Osm.dll</HintPath>
 		</Reference>
-		<!--
+		
 		<PackageReference Include="OsmSharp" Version="7.0.0-pre022" />
 		<PackageReference Include="protobuf-net" Version="3.2.30" />-->
 	</ItemGroup>
@@ -87,8 +88,8 @@
 		<None Include="$(ModTargetsFile)" Link="Properties\Mod.targets" />
 	</ItemGroup>
 
-	<ItemGroup>
+	<!--<ItemGroup>
 	  <Folder Include="Libs\" />
-	</ItemGroup>
+	</ItemGroup>-->
 
 </Project>
