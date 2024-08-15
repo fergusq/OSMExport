@@ -213,13 +213,13 @@ namespace OSMExport.Systems
             {
                 switch (NorthOverride)
                 {
-                    case Direction.North:
-                        return new GeoCoordinate(x / 111_000, -z / 111_000);
-                    case Direction.South:
-                        return new GeoCoordinate(-x / 111_000, z / 111_000);
-                    case Direction.West:
-                        return new GeoCoordinate(z / 111_000, x / 111_000);
                     case Direction.East:
+                        return new GeoCoordinate(x / 111_000, -z / 111_000);
+                    case Direction.North:
+                        return new GeoCoordinate(z / 111_000, x / 111_000);
+                    case Direction.West:
+                        return new GeoCoordinate(-x / 111_000, z / 111_000);
+                    case Direction.South:
                         return new GeoCoordinate(-z / 111_000, -x / 111_000);
                     default:
                         return new GeoCoordinate(x / 111_000, -z / 111_000);
@@ -426,17 +426,9 @@ namespace OSMExport.Systems
                 MaxLongitude = (float)maxBounds.Longitude,
             };
 
-            string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                         "<osm version=\"0.6\" generator=\"CS2-OSMExport\">\n" +
-                         "<bounds minlat=\"" + minBounds.Latitude + "\" minlon=\"" + minBounds.Longitude + "\" maxlat=\"" + maxBounds.Latitude + "\" maxlon=\"" + maxBounds.Longitude + "\"/>\n" +
-                         string.Join("\n", nodeXml) + "\n" +
-                         string.Join("\n", wayXml) + "\n" +
-                         string.Join("\n", relationXml) + "\n" +
-                         "</osm>";
-
             m_Logger.Info("Saving to disk...");
 
-            if (ExportPBF)
+            /*if (ExportPBF)
             {
                 if (FileName.EndsWith(".osm"))
                 {
@@ -446,18 +438,19 @@ namespace OSMExport.Systems
                 {
                     FileName = FileName + ".osm.pbf";
                 }
-                using (var fileStream = new FileInfo(Path.Combine(directory, FileName)).OpenWrite())
+                using (var fileStream = new FileStream(Path.Combine(directory, FileName), FileMode.Create))
                 {
-                    var target = new PBFOsmStreamTarget(fileStream);
+                    var target = new PBFOsmStreamTarget(fileStream, compress: false);
                     target.Initialize();
                     nodeXml.ForEach(target.AddNode);
                     wayXml.ForEach(target.AddWay);
                     relationXml.ForEach(target.AddRelation);
                     target.Flush();
                     target.Close();
+                    fileStream.Flush();
                 }
             }
-            else
+            else*/
             {
                 if (FileName.EndsWith(".osm.pbf"))
                 {
@@ -466,7 +459,7 @@ namespace OSMExport.Systems
                 else if (!FileName.EndsWith(".osm")) {
                     FileName = FileName + ".osm";
                 }
-                using (var fileStream = new FileInfo(Path.Combine(directory, FileName)).OpenWrite())
+                using (var fileStream = new FileStream(Path.Combine(directory, FileName), FileMode.Create))
                 {
                     var target = new XmlOsmStreamTarget(fileStream);
                     target.Initialize();
