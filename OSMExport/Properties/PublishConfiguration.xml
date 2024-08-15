@@ -61,25 +61,18 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/osm-export.1699087/" />
 	<!--Version of the mod-->
-	<ModVersion Value="4.0" />
+	<ModVersion Value="4.1" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
 	<Dependency Id="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
 	<ChangeLog>
-Added support for:
-
-* Toggle motorways on/off
-
-Changed:
-
-* Alleys will be classified as smaller highway=service instead of highway=residential
-* Rewritten OSMExportSystem using OsmSharp
-* Preparations for PBF export
+Fixed directions of north override. In the previous version, east was misclassified as north, north as west, and so on.
 	</ChangeLog>
 	<!--ChangeLog>
 	</ChangeLog-->
 	<!--External link. supported types are discord, github, youtube, twitch, x, paypal, patreon, buymeacoffee, kofi, crowdin, gitlab-->
 	<ExternalLink Type="github" Url="https://github.com/fergusq/OSMExport" />
+	<ExternalLink Type="discord" Url="https://discord.gg/HTav7ARPs2" />
 </Publish>
