@@ -48,6 +48,19 @@ namespace OSMExport
         }
 
         [SettingsUISection(kSection, kOSMExportGroup)]
+        public bool EnableContours
+        {
+            get
+            {
+                return OSMExportSystem.EnableContours;
+            }
+            set
+            {
+                OSMExportSystem.EnableContours = value;
+            }
+        }
+
+        [SettingsUISection(kSection, kOSMExportGroup)]
         [SettingsUITextInput]
         public string FileName
         {
@@ -118,6 +131,9 @@ namespace OSMExport
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.EnableMotorways)), "Enable motorways" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.EnableMotorways)), $"If enabled, the mod will try to deduce which oneway highways are normal highways (green in the default Maperitive ruleset) and which are motorways (blue). Generally works well, but sometimes motorway ramps might be misclassified as highways or vice versa, leading to inconsistent look. If disabled, all highways will be normal (green) highways." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.EnableContours)), "Enable contours" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.EnableContours)), $"If enabled, contour lines will be exported as ways tagged with contour=elevation.\n\nIf the contours are not showing in Maperitive, update your ruleset to the latest version of the ruleset linked on the mod page." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.FileName)), "Output file name" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.FileName)), $"The file name should have the .osm file suffix." },

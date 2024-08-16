@@ -19,7 +19,6 @@ using Unity.Mathematics;
 using UnityEngine;
 using OsmSharp.Streams;
 using OsmSharp.Tags;
-using System.Text;
 
 namespace OSMExport.Systems
 {
@@ -38,6 +37,7 @@ namespace OSMExport.Systems
         internal static string FileName = "export.osm";
         internal static Direction NorthOverride = Direction.North;
         internal static bool EnableMotorways = true;
+        internal static bool EnableContours = false;
 
         private EntityQuery m_EdgeQuery;
         private EntityQuery m_NodeQuery;
@@ -45,6 +45,7 @@ namespace OSMExport.Systems
         private EntityQuery m_BuildingQuery;
         private EntityQuery m_TransportStopQuery;
         private EntityQuery m_TransportLineQuery;
+        private EntityQuery m_TreeQuery;
 
         private TerrainSystem m_TerrainSystem;
         private WaterSystem m_WaterSystem;
@@ -191,6 +192,25 @@ namespace OSMExport.Systems
                     }
             }
             );
+            m_TreeQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new ComponentType[]
+                    {
+                        ComponentType.ReadOnly<Game.Objects.Tree>(),
+                        ComponentType.ReadOnly<Game.Objects.Transform>(),
+                        ComponentType.ReadOnly<PrefabRef>(),
+                    },
+                Any = new ComponentType[]
+                    {
+                    },
+                None = new ComponentType[]
+                    {
+                        ComponentType.ReadOnly<Deleted>(),
+                        ComponentType.ReadOnly<Temp>(),
+                        ComponentType.ReadOnly<Hidden>(),
+                    }
+            }
+            );
 
             m_TerrainSystem = World.GetOrCreateSystemManaged<TerrainSystem>();
             m_WaterSystem = World.GetOrCreateSystemManaged<WaterSystem>();
@@ -222,7 +242,7 @@ namespace OSMExport.Systems
                     case Direction.South:
                         return new GeoCoordinate(-z / 111_000, -x / 111_000);
                     default:
-                        return new GeoCoordinate(x / 111_000, -z / 111_000);
+                        return new GeoCoordinate(z / 111_000, x / 111_000);
                 }
                 
             }
@@ -409,7 +429,12 @@ namespace OSMExport.Systems
             AddAreas(nodeXml, wayXml, relationXml);
             AddBuildinds(nodeXml, wayXml, relationXml);
             AddTransportStops(nodeXml, wayXml, relationXml);
+            //AddTrees(nodeXml, wayXml, relationXml);
             AddWaterBodies(nodeXml, wayXml, relationXml);
+            if (EnableContours)
+            {
+                AddContourLines(nodeXml, wayXml, relationXml);
+            }
 
             m_Logger.Info("Generating complete xml...");
 
@@ -904,17 +929,7 @@ namespace OSMExport.Systems
                 }
                 else if (EntityManager.HasComponent<Game.Buildings.IndustrialProperty>(entity))
                 {
-                    // TODO: warehouses
-                    if (EntityManager.HasComponent<WarehouseData>(prefabRef))
-                    {
-                        tags.AddOrReplace("landuse", "industrial");
-                        tags.AddOrReplace("industrial", "warehouse");
-                    }
-                    else
-                    {
-                        tags.AddOrReplace("landuse", "industrial");
-                        tags.AddOrReplace("industrial", "factory");
-                    }
+                    bool isOffice = false;
                     if (EntityManager.TryGetBuffer<Game.Buildings.Renter>(entity, true, out var renters) && renters.Length > 0)
                     {
                         foreach (var renter in renters)
@@ -924,9 +939,42 @@ namespace OSMExport.Systems
                                 if (EntityManager.TryGetComponent<IndustrialProcessData>(renterPrefabRef.m_Prefab, out var industrialProcessData))
                                 {
                                     companyEntity = renter.m_Renter;
+                                    switch (industrialProcessData.m_Output.m_Resource)
+                                    {
+                                        case Game.Economy.Resource.Financial:
+                                            isOffice = true;
+                                            tags.AddOrReplace("office", "financial");
+                                            break;
+                                        case Game.Economy.Resource.Media:
+                                            isOffice = true;
+                                            // This is not that accurate but no better tag exists to my knowlege
+                                            tags.AddOrReplace("office", "newspaper");
+                                            break;
+                                        case Game.Economy.Resource.Software:
+                                            isOffice = true;
+                                            tags.AddOrReplace("office", "it");
+                                            break;
+                                        case Game.Economy.Resource.Telecom:
+                                            isOffice = true;
+                                            tags.AddOrReplace("office", "telecommunication");
+                                            break;
+                                    }
                                     break;
                                 }
                             }
+                        }
+                    }
+                    if (!isOffice)
+                    {
+                        if (EntityManager.HasComponent<WarehouseData>(prefabRef))
+                        {
+                            tags.AddOrReplace("landuse", "industrial");
+                            tags.AddOrReplace("industrial", "warehouse");
+                        }
+                        else
+                        {
+                            tags.AddOrReplace("landuse", "industrial");
+                            tags.AddOrReplace("industrial", "factory");
                         }
                     }
                 }
@@ -1393,6 +1441,24 @@ namespace OSMExport.Systems
             lineEntities.Dispose();
         }
 
+        private void AddTrees(List<OsmSharp.Node> nodeXml, List<OsmSharp.Way> wayXml, List<OsmSharp.Relation> relationXml)
+        {
+            var trees = m_TreeQuery.ToEntityArray(Allocator.Temp);
+
+            for (int i = 0; i < trees.Length; i++)
+            {
+                var entity = trees[i];
+                var transform = EntityManager.GetComponentData<Game.Objects.Transform>(entity);
+                var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
+                var coordinates = GeoCoordinate.FromGameCoordinages(transform.m_Position.x, transform.m_Position.z);
+                var tags = new TagsCollection();
+                tags.AddOrReplace("natural", "tree");
+
+                nodeXml.Add(NewNode(CreateID(TREE, entity.Index), coordinates, tags));
+            }
+
+            trees.Dispose();
+        }
         private void AddWaterBodies(List<OsmSharp.Node> nodeXml, List<OsmSharp.Way> wayXml, List<OsmSharp.Relation> relationXml)
         {
             m_Logger.Info("Generating water bodies...");
@@ -1692,6 +1758,194 @@ namespace OSMExport.Systems
             return depth > 0f;
         }
 
+        private void AddContourLines(List<OsmSharp.Node> nodeXml, List<OsmSharp.Way> wayXml, List<OsmSharp.Relation> relationXml)
+        {
+            m_Logger.Info("Generating contour lines...");
+
+            TerrainHeightData heightData = m_TerrainSystem.GetHeightData();
+            Bounds bounds = m_TerrainSystem.GetTerrainBounds();
+
+            const int rectSize = 20;
+
+            int maxSizeX = 0, maxSizeZ = 0;
+            for (float x = bounds.min.x; x < bounds.max.x; x += rectSize, maxSizeX++) ;
+            for (float z = bounds.min.z; z < bounds.max.z; z += rectSize, maxSizeZ++) ;
+
+            float[,] heightMap = new float[maxSizeX, maxSizeZ];
+            float maxHeight = -10000;
+            float minHeight = 10000;
+
+            int xi = 0;
+            for (float x = bounds.min.x; x < bounds.max.x; x += rectSize, xi += 1)
+            {
+                int zi = 0;
+                for (float z = bounds.min.z; z < bounds.max.z; z += rectSize, zi += 1)
+                {
+                    var position = new float3(x, 0, z);
+                    var height = TerrainUtils.SampleHeight(ref heightData, position);
+                    heightMap[xi, zi] = height;
+                    if (height < minHeight) minHeight = height;
+                    if (height > maxHeight) maxHeight = height;
+                }
+            }
+
+            int minLine = (int)minHeight / 20;
+            int maxLine = (int)maxHeight / 20;
+
+            HashSet<(int, int)> points = new HashSet<(int, int)> ();
+
+            // Marching squares
+            for (int line = minLine; line < maxLine; line++)
+            {
+                float height = line * 20;
+                var tags = new TagsCollection();
+                tags.AddOrReplace("contour", "elevation");
+                tags.AddOrReplace("ele", $"{line*20}");
+                m_Logger.Info($"Generating contour line {height}...");
+                for (int x = 0; x < maxSizeX-1; x += 1)
+                {
+                    for (int z = 0; z < maxSizeZ - 1; z += 1)
+                    {
+                        bool tl = heightMap[x, z] >= height;
+                        bool tr = heightMap[x + 1, z] >= height;
+                        bool bl = heightMap[x, z + 1] >= height;
+                        bool br = heightMap[x + 1, z + 1] >= height;
+
+                        if ((tl && tr && !bl && br) || (!tl && !tr && bl && !br))
+                        {
+                            points.Add((x * 2 + 0, z * 2 + 1));
+                            points.Add((x * 2 + 1, z * 2 + 2));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+0, z*2+1),
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+2),
+                                },
+                                tags
+                            ));
+                        }
+                        else if (tl && tr && bl && !br || (!tl && !tr && !bl && br))
+                        {
+                            points.Add((x * 2 + 2, z * 2 + 1));
+                            points.Add((x * 2 + 1, z * 2 + 2));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+2, z*2+1),
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+2),
+                                },
+                                tags
+                            ));
+                        }
+                        else if ((tl && tr && !bl && !br) || (!tl && !tr && bl && br))
+                        {
+                            points.Add((x * 2 + 0, z * 2 + 1));
+                            points.Add((x * 2 + 2, z * 2 + 1));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+0, z*2+1),
+                                    CreateID(CONTOUR, 1, x*2+2, z*2+1),
+                                },
+                                tags
+                            ));
+                        }
+                        else if ((tl && !tr && bl && br) || (!tl && tr && !bl && !br))
+                        {
+                            points.Add((x * 2 + 1, z * 2 + 0));
+                            points.Add((x * 2 + 2, z * 2 + 1));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+0),
+                                    CreateID(CONTOUR, 1, x*2+2, z*2+1),
+                                },
+                                tags
+                            ));
+                        }
+                        else if (tl && !tr && !bl && br)
+                        {
+                            points.Add((x * 2 + 1, z * 2 + 0));
+                            points.Add((x * 2 + 0, z * 2 + 1));
+                            points.Add((x * 2 + 1, z * 2 + 2));
+                            points.Add((x * 2 + 2, z * 2 + 1));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z, 1),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+0),
+                                    CreateID(CONTOUR, 1, x*2+0, z*2+1),
+                                },
+                                tags
+                            ));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z, 2),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+2),
+                                    CreateID(CONTOUR, 1, x*2+2, z*2+1),
+                                },
+                                tags
+                            ));
+                        }
+                        else if (!tl && tr && bl && !br)
+                        {
+                            points.Add((x * 2 + 0, z * 2 + 1));
+                            points.Add((x * 2 + 1, z * 2 + 2));
+                            points.Add((x * 2 + 1, z * 2 + 0));
+                            points.Add((x * 2 + 2, z * 2 + 1));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z, 1),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+0, z*2+1),
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+2),
+                                },
+                                tags
+                            ));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z, 2),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+0),
+                                    CreateID(CONTOUR, 1, x*2+2, z*2+1),
+                                },
+                                tags
+                            ));
+                        }
+                        else if ((tl && !tr && bl && !br) || (!tl && tr && !bl && br))
+                        {
+                            points.Add((x * 2 + 1, z * 2 + 0));
+                            points.Add((x * 2 + 1, z * 2 + 2));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+0),
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+2),
+                                },
+                                tags
+                            ));
+                        }
+                        else if ((tl && !tr && !bl && !br) || (!tl && tr && bl && br))
+                        {
+                            points.Add((x * 2 + 1, z * 2 + 0));
+                            points.Add((x * 2 + 0, z * 2 + 1));
+                            wayXml.Add(NewWay(
+                                CreateID(CONTOUR, 0, x, z),
+                                new long[] {
+                                    CreateID(CONTOUR, 1, x*2+1, z*2+0),
+                                    CreateID(CONTOUR, 1, x*2+0, z*2+1),
+                                },
+                                tags
+                            ));
+                        }
+                    }
+                }
+            }
+
+            foreach (var (x, z) in points)
+            {
+                var coords = GeoCoordinate.FromGameCoordinages(bounds.min.x + x * rectSize / 2, bounds.min.z + z * rectSize / 2);
+                nodeXml.Add(NewNode(CreateID(CONTOUR, 1, x, z), coords, new TagsCollection()));
+            }
+        }
+
         private string NameToString(NameSystem.Name name)
         {
             // Read private fields m_NameID and m_NameType
@@ -1755,6 +2009,8 @@ namespace OSMExport.Systems
         private const int TRANSPORT_STOP = 70;
         private const int TRANSPORT_LINE = 80;
         private const int WATER = 40;
+        private const int CONTOUR = 90;
+        private const int TREE = 100;
 
         private static Dictionary<string, int> IDs;
         private static int IdCounter = 0;
