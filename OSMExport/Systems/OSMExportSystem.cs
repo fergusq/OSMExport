@@ -38,6 +38,14 @@ namespace OSMExport.Systems
         internal static Direction NorthOverride = Direction.North;
         internal static bool EnableMotorways = true;
         internal static bool EnableContours = false;
+        internal static bool EnableNonstandardTransit = false;
+        internal static bool EnableNonstandardTaxi = false;
+        internal static bool EnableNonstandardBus = true;
+        internal static bool EnableNonstandardTram = true;
+        internal static bool EnableNonstandardTrain = true;
+        internal static bool EnableNonstandardSubway = true;
+        internal static bool EnableNonstandardShip = false;
+        internal static bool EnableNonstandardAirplane = false;
 
         private EntityQuery m_EdgeQuery;
         private EntityQuery m_NodeQuery;
@@ -137,6 +145,7 @@ namespace OSMExport.Systems
                         ComponentType.ReadOnly<Game.Buildings.CargoTransportStation>(),
                         ComponentType.ReadOnly<Game.Buildings.Park>(),
                         ComponentType.ReadOnly<Game.Buildings.GarbageFacility>(),
+                        ComponentType.ReadOnly<Game.Buildings.TelecomFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.Transformer>(),
                         ComponentType.ReadOnly<Game.Buildings.ElectricityProducer>(),
                     },
@@ -707,6 +716,12 @@ namespace OSMExport.Systems
                         way.Tags.AddOrReplace("aeroway", "taxiway");
                     }
                 }
+                else if (EntityManager.HasComponent<Game.Net.Waterway>(entity))
+                {
+                    // TODO: Are the ships really ferries?
+                    // Should this be e.g. separation_line?
+                    way.Tags.AddOrReplace("seamark:type", "ferry_route");
+                }
                 else
                 {
                     continue;
@@ -1191,6 +1206,11 @@ namespace OSMExport.Systems
                     // TODO: different types of garbage facilities
                     tags.AddOrReplace("landuse", "industrial");
                 }
+                else if (EntityManager.HasComponent<Game.Buildings.TelecomFacility>(entity))
+                {
+                    // TODO: different types of garbage facilities
+                    tags.AddOrReplace("landuse", "industrial");
+                }
                 else if (EntityManager.HasComponent<Game.Buildings.Transformer>(entity))
                 {
                     tags.AddOrReplace("power", "substation");
@@ -1297,6 +1317,43 @@ namespace OSMExport.Systems
                 tags.AddOrReplace("name", NameToString(name));
 
                 nodeXml.Add(NewNode(id, coordinates, tags));
+
+                // Non-standard stop node
+                if (EnableNonstandardTransit)
+                {
+                    var nsId = CreateID(TRANSPORT_STOP, entity.Index, 1);
+                    var nsTags = new TagsCollection();
+                    var isNonstandardEnabledForThisType = true;
+                    if (EntityManager.HasComponent<Game.Routes.BusStop>(entity))
+                    {
+                        nsTags.AddOrReplace("osm_export_stop", "bus");
+                        isNonstandardEnabledForThisType = EnableNonstandardBus;
+                    }
+                    else if (EntityManager.HasComponent<Game.Routes.TaxiStand>(entity))
+                    {
+                        nsTags.AddOrReplace("osm_export_stop", "taxi");
+                        isNonstandardEnabledForThisType = EnableNonstandardTaxi;
+                    }
+                    else if (EntityManager.HasComponent<Game.Routes.TramStop>(entity))
+                    {
+                        nsTags.AddOrReplace("osm_export_stop", "tram");
+                        isNonstandardEnabledForThisType = EnableNonstandardTram;
+                    }
+                    else if (EntityManager.HasComponent<Game.Routes.TrainStop>(entity))
+                    {
+                        nsTags.AddOrReplace("osm_export_stop", "train");
+                        isNonstandardEnabledForThisType = EnableNonstandardTrain;
+                    }
+                    else if (EntityManager.HasComponent<Game.Routes.SubwayStop>(entity))
+                    {
+                        nsTags.AddOrReplace("osm_export_stop", "subway");
+                        isNonstandardEnabledForThisType = EnableNonstandardSubway;
+                    }
+                    if (isNonstandardEnabledForThisType)
+                    {
+                        nodeXml.Add(NewNode(nsId, coordinates, nsTags));
+                    }
+                }
             }
 
             stopEntities.Dispose();
@@ -1312,6 +1369,7 @@ namespace OSMExport.Systems
                 var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
 
                 string type = "";
+                var isNonstandardEnabledForThisType = true;
                 if (EntityManager.TryGetComponent<TransportLineData>(prefabRef.m_Prefab, out var transportLineData))
                 {
                     // Check if we have a cargo line (TODO should these be supported?)
@@ -1323,18 +1381,33 @@ namespace OSMExport.Systems
                     if (transportLineData.m_TransportType == TransportType.Bus)
                     {
                         type = "bus";
+                        isNonstandardEnabledForThisType = EnableNonstandardBus;
                     }
                     else if (transportLineData.m_TransportType == TransportType.Tram)
                     {
                         type = "tram";
+                        isNonstandardEnabledForThisType = EnableNonstandardTram;
                     }
                     else if (transportLineData.m_TransportType == TransportType.Train)
                     {
                         type = "train";
+                        isNonstandardEnabledForThisType = EnableNonstandardTrain;
                     }
                     else if (transportLineData.m_TransportType == TransportType.Subway)
                     {
                         type = "subway";
+                        isNonstandardEnabledForThisType = EnableNonstandardSubway;
+                    }
+                    else if (transportLineData.m_TransportType == TransportType.Ship)
+                    {
+                        // TODO: Are the ships really ferries?
+                        type = "ferry";
+                        isNonstandardEnabledForThisType = EnableNonstandardShip;
+                    }
+                    else if (transportLineData.m_TransportType == TransportType.Airplane)
+                    {
+                        type = "subway";
+                        isNonstandardEnabledForThisType = EnableNonstandardAirplane;
                     }
                 }
 
@@ -1356,7 +1429,9 @@ namespace OSMExport.Systems
                 // Make the actual OSM relation
                 var members = new List<OsmSharp.RelationMember>();
 
-                if (EntityManager.TryGetBuffer<Game.Routes.RouteWaypoint>(entity, true, out var routeWaypoints))
+                var hasRouteWaypoints = EntityManager.TryGetBuffer<Game.Routes.RouteWaypoint>(entity, true, out var routeWaypoints);
+
+                if (hasRouteWaypoints)
                 {
                     foreach (var waypoint in routeWaypoints)
                     {
@@ -1397,10 +1472,10 @@ namespace OSMExport.Systems
                     relationXml.Add(NewRelation(CreateID(TRANSPORT_LINE, entity.Index, 0), members, tags));
                 }
 
-                /*
                 // Make a non-standard way for easily displaying the route in Maperitive
-                if (false && hasRouteSegments)
+                if (EnableNonstandardTransit && isNonstandardEnabledForThisType && hasRouteSegments)
                 {
+                    int seg = 0;
                     foreach (var segment in routeSegments)
                     {
                         if (EntityManager.TryGetBuffer<Game.Routes.CurveElement>(segment.m_Segment, true, out var curveElements))
@@ -1416,26 +1491,29 @@ namespace OSMExport.Systems
                                     curvePoints.Add((curveElement.m_Curve.d.x, curveElement.m_Curve.d.z));
                                 }
 
-                                var nodeRefs = new List<string>();
+                                var nodeRefs = new List<long>();
                                 for (int j = 0; j < curvePoints.Count; j++)
                                 {
                                     var coordinates = GeoCoordinate.FromGameCoordinages(curvePoints[j].Item1, curvePoints[j].Item2);
-                                    var curvePointId = CreateID(TRANSPORT_LINE, entity.Index, 1, j);
-                                    nodeXml.Add($"<node id=\"{curvePointId}\" lat=\"{coordinates.Latitude}\" lon=\"{coordinates.Longitude}\" version=\"1\"></node>");
-                                    nodeRefs.Add($"<nd ref=\"{curvePointId}\" />");
+                                    var curvePointId = CreateID(TRANSPORT_LINE, entity.Index, 1, seg, j);
+                                    nodeXml.Add(NewNode(curvePointId, coordinates, new TagsCollection()));
+                                    nodeRefs.Add(curvePointId);
                                 }
 
-                                var wayId = CreateID(TRANSPORT_LINE, entity.Index, 1);
-                                wayXml.Add($"<way id=\"{wayId}\" version=\"5\">");
-                                wayXml.AddRange(nodeRefs);
-                                wayXml.Add($"<tag k=\"osm_export_route\" v=\"{type}\" />");
-                                wayXml.Add($"<tag k=\"osm_export_route_color\" v=\"{color}\" />");
-                                wayXml.Add("</way>");
+                                var wayId = CreateID(TRANSPORT_LINE, entity.Index, 1, seg);
+                                var tags = new TagsCollection();
+                                tags.AddOrReplace("osm_export_route", type);
+                                tags.AddOrReplace("osm_export_route_color", colorCode);
+                                tags.AddOrReplace("osm_export_route_ref", routeNum);
+                                tags.AddOrReplace("osm_export_route_name", NameToString(name));
+                                tags.AddOrReplace("layer", "5");
+                                wayXml.Add(NewWay(wayId, nodeRefs, tags));
                             }
                         }
+                        seg++;
                     }
                 }
-                */
+                
             }
 
             lineEntities.Dispose();

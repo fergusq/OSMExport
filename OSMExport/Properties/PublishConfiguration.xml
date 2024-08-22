@@ -61,7 +61,7 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/osm-export.1699087/" />
 	<!--Version of the mod-->
-	<ModVersion Value="5.0" />
+	<ModVersion Value="6.0" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -70,14 +70,9 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<ChangeLog>
 Added support for:
 
-* Contour lines (experimental)
-* Offices tagged as `office=*` instead of `landuse=industrial`
+* Transit lines (experimental)
 
-(If you are using Maperitive, you might need to download the latest version of the custom ruleset to see the contour lines and office zones.)
-
-Fixes:
-
-* Fixed directions of north override. In the previous version, east was misclassified as north, north as west, and so on.
+(If you are using Maperitive, you might need to download the latest version of the custom ruleset to see the transit lines.)
 	</ChangeLog>
 	<!--ChangeLog>
 	</ChangeLog-->
