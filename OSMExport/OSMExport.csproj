@@ -4,8 +4,9 @@
 		<OutputType>Library</OutputType>
 		<TargetFramework>net472</TargetFramework>
 		<Configurations>Debug;Release</Configurations>
-		<LangVersion>10.0</LangVersion>
-		
+		<LangVersion>12.0</LangVersion>
+
+
 		<!--The file where mod information which is required for publishing mod on PDX mods are stored-->
 		<PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>
 	</PropertyGroup>
@@ -13,14 +14,11 @@
 	<!--Imports must be after PropertyGroup block-->
 	<Import Project="$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))\Mod.props" />
 	<Import Project="$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))\Mod.targets" />
-
+	
 	<ItemGroup>
-		<!--<Reference Include="Osm">
-			<HintPath>Libs\Osm.dll</HintPath>
+		<Reference Include="OSMRender">
+			<HintPath>Libs\OSMRenderRepack.dll</HintPath>
 		</Reference>
-		
-		<PackageReference Include="OsmSharp" Version="7.0.0-pre022" />
-		<PackageReference Include="protobuf-net" Version="3.2.30" />-->
 	</ItemGroup>
 
 	<ItemGroup>
@@ -50,6 +48,12 @@
 		</Reference>
 		<Reference Include="Colossal.Mathematics">
 			<Private>False</Private>
+		</Reference>
+		<Reference Include="Colossal.AssetPipeline">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Colossal.Mono.Cecil">
+			<Private>false</Private>
 		</Reference>
 		<Reference Include="Unity.InputSystem">
 			<Private>false</Private>
@@ -91,5 +95,14 @@
 	<!--<ItemGroup>
 	  <Folder Include="Libs\" />
 	</ItemGroup>-->
+
+	<ItemGroup>
+		<_Icons Include="..\OSMRender\Rules\icons\**\*.*" />
+		<_Rules Include="..\OSMRender\Rules\*.*" />
+	</ItemGroup>
+	<Target Name="CopyAssets" AfterTargets="AfterBuild">
+		<Copy SourceFiles="@(_Icons)" DestinationFolder="$(DeployDir)\Rules\icons\%(RecursiveDir)" />
+		<Copy SourceFiles="@(_Rules)" DestinationFolder="$(DeployDir)\Rules" />
+	</Target>
 
 </Project>

@@ -14,6 +14,9 @@ Exports your city to the OpenStreetMap XML format. To do this, go to settings an
 This creates a file in the AppData\LocalLow\Colossal Order\Cities Skylines II\ModsData\OSMExport folder.
 The export process might take up to a minute.
 
+The mod also contains an builtin OSM renderer that can generate PDF files.
+This feature is highly experimental and might have lower quality than using an external program such as Maperitive.
+
 ## How to open OSM files
 
 This mod does not render the XML files to images. You must do that yourself.
@@ -41,6 +44,7 @@ See the [OSM wiki page](https://wiki.openstreetmap.org/wiki/Key:highway) for a l
 
 ### Other
 
+* [OSMRender](https://github.com/fergusq/OSMRender) is a command line tool that can be used to render OSM files to various image formats using Maperitive rulesets. It is developed by the author of this mod.
 * [Tilemaker](https://github.com/systemed/tilemaker) can render OSM files to vector tile formats. It produces a nice Google Maps-ish look for the map.
 To use this, you must use e.g. the osmium command line tool to convert the map to the PBF format, and then the tilemaker command line tool to create a .mbtiles file.
 * [Mapnik](https://switch2osm.org) is very difficult to set up but might produce best results.
@@ -61,7 +65,7 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/osm-export.1699087/" />
 	<!--Version of the mod-->
-	<ModVersion Value="6.0" />
+	<ModVersion Value="7.0" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -70,9 +74,10 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<ChangeLog>
 Added support for:
 
-* Transit lines (experimental)
+* Telecom facilities tagged as landuse=industrial
+* Generating PDF files using OSMRender as backend
 
-(If you are using Maperitive, you might need to download the latest version of the custom ruleset to see the transit lines.)
+(If you are using Maperitive, you might need to download the latest version of the custom ruleset to see the new features.)
 	</ChangeLog>
 	<!--ChangeLog>
 	</ChangeLog-->

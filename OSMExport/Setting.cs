@@ -10,15 +10,20 @@ using OSMExport.Systems;
 namespace OSMExport
 {
     [FileLocation(nameof(OSMExport))]
-    [SettingsUIGroupOrder(kOSMExportGroup, kAdvancedGroup, kTransitGroup)]
-    [SettingsUIShowGroupName(kTransitGroup)]
+    [SettingsUIGroupOrder(kCommonExportGroup, kOSMExportGroup, kImageExportGroup, kAdvancedGroup, kTransitGroup)]
+    [SettingsUIShowGroupName(kOSMExportGroup, kImageExportGroup, kTransitGroup)]
     public class Setting : ModSetting
     {
         public const string kSection = "Main";
         public const string kSectionAdvanced = "Advanced";
 
+        public const string kCommonExportGroup = "Common Export";
+
         public const string kOSMExportGroup = "OSM Export";
         public const string kOSMExportButtonGroup = "OSM Export Buttons";
+
+        public const string kImageExportGroup = "Image Export";
+        public const string kImageExportButtonGroup = "Image Export Buttons";
 
         public const string kAdvancedGroup = "Advanced Options";
         public const string kTransitGroup = "Transport Lines";
@@ -28,7 +33,7 @@ namespace OSMExport
 
         }
 
-        [SettingsUISection(kSection, kOSMExportGroup)]
+        [SettingsUISection(kSection, kCommonExportGroup)]
         public OSMExportSystem.Direction NorthOverride
         {
             get
@@ -41,7 +46,7 @@ namespace OSMExport
             }
         }
 
-        [SettingsUISection(kSection, kOSMExportGroup)]
+        [SettingsUISection(kSection, kCommonExportGroup)]
         public bool EnableMotorways {
             get
             {
@@ -53,7 +58,7 @@ namespace OSMExport
             }
         }
 
-        [SettingsUISection(kSection, kOSMExportGroup)]
+        [SettingsUISection(kSection, kCommonExportGroup)]
         [SettingsUITextInput]
         public string FileName
         {
@@ -81,6 +86,7 @@ namespace OSMExport
 
         [SettingsUISection(kSection, kOSMExportGroup)]
         [SettingsUIButtonGroup(kOSMExportButtonGroup)]
+        [SettingsUIDisableByCondition(typeof(Setting), nameof(NotInGameOrEditor))]
         [SettingsUIHidden]
         public bool ExportPBF
         {
@@ -88,6 +94,32 @@ namespace OSMExport
             {
                 OSMExportSystem.Activated = true;
                 OSMExportSystem.ExportPBF = true;
+            }
+        }
+
+        [SettingsUISection(kSection, kImageExportGroup)]
+        [SettingsUISlider(min = 11, max = 18, step = 1)]
+        public int ZoomLevel
+        {
+            get
+            {
+                return OSMExportSystem.ZoomLevel;
+            }
+            set
+            {
+                OSMExportSystem.ZoomLevel = value;
+            }
+        }
+
+        [SettingsUISection(kSection, kImageExportGroup)]
+        [SettingsUIButtonGroup(kImageExportButtonGroup)]
+        [SettingsUIDisableByCondition(typeof(Setting), nameof(NotInGameOrEditor))]
+        public bool ExportPDF
+        {
+            set
+            {
+                OSMExportSystem.Activated = true;
+                OSMExportSystem.ExportPDF = true;
             }
         }
 
@@ -246,6 +278,8 @@ namespace OSMExport
                 { m_Setting.GetSettingsLocaleID(), "OSM Export" },
                 { m_Setting.GetOptionTabLocaleID(Setting.kSection), "Main" },
 
+                { m_Setting.GetOptionGroupLocaleID(Setting.kCommonExportGroup), "Common Export Options" },
+
                 { m_Setting.GetOptionGroupLocaleID(Setting.kOSMExportGroup), "OSM Export" },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.NorthOverride)), "North override" },
@@ -267,6 +301,14 @@ namespace OSMExport
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.ExportPBF)), "Export to PBF" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.ExportPBF)), $"A file will be created in the ModsData directory. This may take up to a minute!\n\nIf the file name does not end in .osm.pbf, the .pbf extension is added automatically." },
+
+                { m_Setting.GetOptionGroupLocaleID(Setting.kImageExportGroup), "PDF Export" },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.ZoomLevel)), "Zoom level" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.ZoomLevel)), $"11 makes a small image with almost no details. 18 makes a very large image with a lot of details." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.ExportPDF)), "Generate PDF" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.ExportPDF)), $"A file will be created in the ModsData directory. This may take up to a minute!\n\nIf the file name does not end in .pdf, the .pdf extension is added automatically.\n\nThis feature is experimental! It might have graphical issues and other bugs." },
 
                 { m_Setting.GetOptionTabLocaleID(Setting.kSectionAdvanced), "Experimental" },
                 { m_Setting.GetOptionGroupLocaleID(Setting.kAdvancedGroup), "Experimental options" },

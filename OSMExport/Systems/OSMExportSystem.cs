@@ -19,12 +19,16 @@ using Unity.Mathematics;
 using UnityEngine;
 using OsmSharp.Streams;
 using OsmSharp.Tags;
+using OSMExport.OSMRenderUtils;
+using OSMRender.Render.Commands;
+using VectSharp;
+using VectSharp.PDF;
 
 namespace OSMExport.Systems
 {
     public partial class OSMExportSystem : GameSystemBase
     {
-        internal static bool Activated = false, ExportPBF = false;
+        internal static bool Activated = false, ExportPBF = false, ExportPDF = false;
 
         public enum Direction
         {
@@ -36,6 +40,7 @@ namespace OSMExport.Systems
 
         internal static string FileName = "export.osm";
         internal static Direction NorthOverride = Direction.North;
+        internal static int ZoomLevel = 16;
         internal static bool EnableMotorways = true;
         internal static bool EnableContours = false;
         internal static bool EnableNonstandardTransit = false;
@@ -411,7 +416,7 @@ namespace OSMExport.Systems
             if (!Activated) return;
             Activated = false;
 
-            IDs = new Dictionary<string, int>();
+            IDs = new();
             IdCounter = 10000;
 
             var directory = Path.Combine(
@@ -485,6 +490,37 @@ namespace OSMExport.Systems
                 }
             }
             else*/
+            if (ExportPDF)
+            {
+                if (FileName.EndsWith(".osm"))
+                {
+                    FileName = FileName.Substring(0, FileName.Length - ".osm".Length) + ".pdf";
+                }
+                else if (!FileName.EndsWith(".pdf"))
+                {
+                    FileName = FileName + ".pdf";
+                }
+                var logger = new ColossalLogger(m_Logger);
+                var reader = new Reader(logger);
+                DrawIcon.SearchPath = Path.Combine(Mod.AssemblyPath, "Rules");
+                var rules = reader.ReadRules(Path.Combine(Mod.AssemblyPath, "Rules", "OSMExport.mrules"));
+                var doc = reader.OSMToGeoDocument(new OsmSharp.API.Osm()
+                {
+                    Nodes = nodeXml.ToArray(),
+                    Ways = wayXml.ToArray(),
+                    Relations = relationXml.ToArray(),
+                });
+                rules.Apply(doc);
+                var renderer = new OSMRender.Render.Renderer(doc.Bounds, ZoomLevel, logger);
+                var tiles = renderer.Render(doc, tiled: false);
+                var document = new Document();
+                foreach (var pair in tiles)
+                {
+                    document.Pages.Add(pair.Value);
+                }
+                document.SaveAsPDF(Path.Combine(directory, FileName));
+            }
+            else
             {
                 if (FileName.EndsWith(".osm.pbf"))
                 {

@@ -1,0 +1,3 @@
+[submodule "OSMRender"]
+	path = OSMRender
+	url = https://github.com/fergusq/OSMRender.git
