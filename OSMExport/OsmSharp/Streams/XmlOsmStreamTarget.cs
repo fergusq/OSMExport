@@ -127,6 +127,7 @@ namespace OsmSharp.Streams
         public override void AddNode(Node node)
         {
             _nodeSerializer.Serialize(_writer, node);
+            _writer.WriteRaw("\n");
         }
 
         /// <summary>
@@ -135,6 +136,7 @@ namespace OsmSharp.Streams
         public override void AddWay(Way way)
         {
             _waySerializer.Serialize(_writer, way);
+            _writer.WriteRaw("\n");
         }
 
         /// <summary>
@@ -143,6 +145,7 @@ namespace OsmSharp.Streams
         public override void AddRelation(Relation relation)
         {
             _relationSerializer.Serialize(_writer, relation);
+            _writer.WriteRaw("\n");
         }
         
         private bool _closed = false;

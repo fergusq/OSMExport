@@ -15,7 +15,7 @@ This creates a file in the AppData\LocalLow\Colossal Order\Cities Skylines II\Mo
 The export process might take up to a minute.
 
 The mod also contains an builtin OSM renderer that can generate PDF files.
-This feature is highly experimental and might have lower quality than using an external program such as Maperitive.
+No external programs are required to use this mod.
 
 ## How to open OSM files
 
@@ -65,7 +65,7 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/osm-export.1699087/" />
 	<!--Version of the mod-->
-	<ModVersion Value="7.0" />
+	<ModVersion Value="8.0" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -74,10 +74,10 @@ The thumbnail uses the map icon by Lorc licensed under CC BY 3.0 (https://game-i
 	<ChangeLog>
 Added support for:
 
-* Telecom facilities tagged as landuse=industrial
-* Generating PDF files using OSMRender as backend
-
-(If you are using Maperitive, you might need to download the latest version of the custom ruleset to see the new features.)
+* More detailed tram lines
+* Trees (very experimental)
+* Changing water cell size (allows faster export with lower resolution)
+* New alternative map style
 	</ChangeLog>
 	<!--ChangeLog>
 	</ChangeLog-->

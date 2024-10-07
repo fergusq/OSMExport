@@ -23,12 +23,16 @@ using OSMExport.OSMRenderUtils;
 using OSMRender.Render.Commands;
 using VectSharp;
 using VectSharp.PDF;
+using Game.Pathfind;
+using Colossal.IO.AssetDatabase.Internal;
+using System;
+//using VectSharp.SVG;
 
 namespace OSMExport.Systems
 {
     public partial class OSMExportSystem : GameSystemBase
     {
-        internal static bool Activated = false, ExportPBF = false, ExportPDF = false;
+        internal static bool Activated = false, ExportPBF = false, ExportPDF = false, ExportSVG = false, ExportPNG = false;
 
         public enum Direction
         {
@@ -38,11 +42,20 @@ namespace OSMExport.Systems
             West
         }
 
+        public enum Style
+        {
+            Classic,
+            Modern,
+        }
+
         internal static string FileName = "export.osm";
         internal static Direction NorthOverride = Direction.North;
-        internal static int ZoomLevel = 16;
         internal static bool EnableMotorways = true;
-        internal static bool EnableContours = false;
+        internal static bool EnableAccurateWays = false;
+        internal static bool EnableAccurateTrams = true;
+        internal static bool EnableTrees = false;
+        internal static int ZoomLevel = 16;
+        internal static Style Ruleset = Style.Classic;
         internal static bool EnableNonstandardTransit = false;
         internal static bool EnableNonstandardTaxi = false;
         internal static bool EnableNonstandardBus = true;
@@ -51,7 +64,9 @@ namespace OSMExport.Systems
         internal static bool EnableNonstandardSubway = true;
         internal static bool EnableNonstandardShip = false;
         internal static bool EnableNonstandardAirplane = false;
+        internal static int WaterResolution = 20;
 
+        private EntityQuery m_LaneQuery;
         private EntityQuery m_EdgeQuery;
         private EntityQuery m_NodeQuery;
         private EntityQuery m_AreaQuery;
@@ -69,72 +84,90 @@ namespace OSMExport.Systems
         protected override void OnCreate()
         {
             base.OnCreate();
-            m_EdgeQuery = GetEntityQuery(new EntityQueryDesc
+            m_LaneQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new ComponentType[]
-                    {
-                        ComponentType.ReadOnly<Game.Net.Edge>(),
+                All =
+                    [
+                        ComponentType.ReadOnly<Game.Net.Lane>(),
                         ComponentType.ReadOnly<PrefabRef>(),
-                        ComponentType.ReadOnly<Game.Net.SubLane>(),
-                    },
-                Any = new ComponentType[]
-                    {
-                    },
-                None = new ComponentType[]
-                    {
+                        ComponentType.ReadOnly<Owner>(),
+                    ],
+                Any =
+                    [
+                        ComponentType.ReadOnly<Game.Net.CarLane>(),
+                        ComponentType.ReadOnly<Game.Net.TrackLane>(),
+                        ComponentType.ReadOnly<Game.Net.PedestrianLane>(),
+                    ],
+                None =
+                    [
                         ComponentType.ReadOnly<Deleted>(),
                         ComponentType.ReadOnly<Temp>(),
                         ComponentType.ReadOnly<Hidden>(),
-                    }
+                        ComponentType.ReadOnly<Game.Net.MasterLane>(),
+                    ]
+            }
+            );
+            m_EdgeQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All =
+                    [
+                        ComponentType.ReadOnly<Game.Net.Edge>(),
+                        ComponentType.ReadOnly<PrefabRef>(),
+                        ComponentType.ReadOnly<Game.Net.SubLane>(),
+                    ],
+                Any = [],
+                None =
+                    [
+                        ComponentType.ReadOnly<Deleted>(),
+                        ComponentType.ReadOnly<Temp>(),
+                        ComponentType.ReadOnly<Hidden>(),
+                    ]
             }
             );
             m_NodeQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new ComponentType[]
-                    {
+                All =
+                    [
                         ComponentType.ReadOnly<Game.Net.Node>(),
-                    },
-                Any = new ComponentType[]
-                    {
-
-                    },
-                None = new ComponentType[]
-                    {
+                    ],
+                Any = [],
+                None =
+                    [
                         ComponentType.ReadOnly<Deleted>(),
                         ComponentType.ReadOnly<Temp>(),
                         ComponentType.ReadOnly<Hidden>(),
-                    }
+                    ]
             }
             );
             m_AreaQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new ComponentType[]
-                    {
+                All =
+                    [
                         ComponentType.ReadOnly<Game.Areas.Area>(),
-                    },
-                Any = new ComponentType[]
-                    {
+                    ],
+                Any =
+                    [
                         ComponentType.ReadOnly<Game.Areas.Lot>(),
                         ComponentType.ReadOnly<Game.Areas.District>(),
-                    },
-                None = new ComponentType[]
-                    {
+                    ],
+                None =
+                    [
                         ComponentType.ReadOnly<Deleted>(),
                         ComponentType.ReadOnly<Temp>(),
                         ComponentType.ReadOnly<Hidden>(),
-                    }
+                    ]
             }
             );
             m_BuildingQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new ComponentType[]
-                    {
+                All =
+                    [
                         ComponentType.ReadOnly<Game.Buildings.Building>(),
                         ComponentType.ReadOnly<Game.Objects.Transform>(),
                         ComponentType.ReadOnly<PrefabRef>(),
-                    },
-                Any = new ComponentType[]
-                    {
+                    ],
+                Any =
+                    [
                         ComponentType.ReadOnly<Game.Buildings.School>(),
                         ComponentType.ReadOnly<Game.Buildings.ParkingFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.IndustrialProperty>(),
@@ -153,25 +186,25 @@ namespace OSMExport.Systems
                         ComponentType.ReadOnly<Game.Buildings.TelecomFacility>(),
                         ComponentType.ReadOnly<Game.Buildings.Transformer>(),
                         ComponentType.ReadOnly<Game.Buildings.ElectricityProducer>(),
-                    },
-                None = new ComponentType[]
-                    {
+                    ],
+                None =
+                    [
                         ComponentType.ReadOnly<Deleted>(),
                         ComponentType.ReadOnly<Temp>(),
                         ComponentType.ReadOnly<Hidden>(),
-                    }
+                    ]
             }
             );
             m_TransportStopQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new ComponentType[]
-                    {
+                All =
+                    [
                         ComponentType.ReadOnly<Game.Routes.TransportStop>(),
                         ComponentType.ReadOnly<Game.Objects.Transform>(),
                         ComponentType.ReadOnly<PrefabRef>(),
-                    },
-                Any = new ComponentType[]
-                    {
+                    ],
+                Any =
+                    [
                         ComponentType.ReadOnly<Game.Routes.BusStop>(),
                         ComponentType.ReadOnly<Game.Routes.TramStop>(),
                         ComponentType.ReadOnly<Game.Routes.TaxiStand>(),
@@ -179,50 +212,46 @@ namespace OSMExport.Systems
                         ComponentType.ReadOnly<Game.Routes.TrainStop>(),
                         ComponentType.ReadOnly<Game.Routes.ShipStop>(),
                         ComponentType.ReadOnly<Game.Routes.AirplaneStop>(),
-                    },
-                None = new ComponentType[]
-                    {
+                    ],
+                None =
+                    [
                         ComponentType.ReadOnly<Deleted>(),
                         ComponentType.ReadOnly<Temp>(),
                         ComponentType.ReadOnly<Hidden>(),
-                    }
+                    ]
             }
             );
             m_TransportLineQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new ComponentType[]
-                    {
+                All =
+                    [
                         ComponentType.ReadOnly<Game.Routes.TransportLine>(),
                         ComponentType.ReadOnly<PrefabRef>(),
-                    },
-                Any = new ComponentType[]
-                    {
-                    },
-                None = new ComponentType[]
-                    {
+                    ],
+                Any = [],
+                None =
+                    [
                         ComponentType.ReadOnly<Deleted>(),
                         ComponentType.ReadOnly<Temp>(),
                         ComponentType.ReadOnly<Hidden>(),
-                    }
+                    ]
             }
             );
             m_TreeQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new ComponentType[]
-                    {
+                All =
+                    [
                         ComponentType.ReadOnly<Game.Objects.Tree>(),
                         ComponentType.ReadOnly<Game.Objects.Transform>(),
                         ComponentType.ReadOnly<PrefabRef>(),
-                    },
-                Any = new ComponentType[]
-                    {
-                    },
-                None = new ComponentType[]
-                    {
+                    ],
+                Any = [],
+                None =
+                    [
                         ComponentType.ReadOnly<Deleted>(),
                         ComponentType.ReadOnly<Temp>(),
                         ComponentType.ReadOnly<Hidden>(),
-                    }
+                    ]
             }
             );
 
@@ -262,6 +291,36 @@ namespace OSMExport.Systems
             }
         }
 
+        class UnmergedNode(int id, int owner, bool isRoad, int edgeDelta, int laneIndex)
+        {
+            public readonly int Id = id;
+            public readonly int Owner = owner;
+            public readonly bool IsRoad = isRoad;
+            public readonly int EdgeDelta = edgeDelta;
+            public readonly int LaneIndex = laneIndex;
+            public (float x, float z) Location;
+        }
+
+        class MergedNode(int id, int owner)
+        {
+            public readonly int Id = id;
+            public readonly int Owner = owner;
+            public readonly HashSet<(float x, float z)> Locations = [];
+
+            public float3 Location => new(
+                Locations.Select(p => p.x).Sum() / Locations.Count,
+                0,
+                Locations.Select(p => p.z).Sum() / Locations.Count
+            );
+        }
+
+        class Lane(MergedNode start, MergedNode end, Entity laneEntity)
+        {
+            public MergedNode StartNode = start;
+            public MergedNode EndNode = end;
+            public Entity LaneEntity = laneEntity;
+        }
+
         enum HighwayType
         {
             Motorway,
@@ -277,67 +336,33 @@ namespace OSMExport.Systems
             NotHighway,
         }
 
-        class Highway
+        class Highway(int id)
         {
-            public int Id { get; set; }
-            public List<long> Nodes { get; set; }
-            public TagsCollection Tags { get; set; }
-            public HighwayType Type { get; set; }
-            public bool IsLink { get; set; }
-            public bool MightBeLink { get; set; }
-            public List<int> NodeIds { get; set; }
-
-            public Highway(int id)
-            {
-                Id = id;
-                Nodes = new List<long>();
-                Tags = new TagsCollection();
-                Type = HighwayType.NotHighway;
-                IsLink = false;
-                MightBeLink = false;
-                NodeIds = new List<int>();
-            }
+            public int Id { get; set; } = id;
+            public List<long> Nodes { get; set; } = [];
+            public TagsCollection Tags { get; set; } = new TagsCollection();
+            public HighwayType Type { get; set; } = HighwayType.NotHighway;
+            public bool IsLink { get; set; } = false;
+            public bool MightBeLink { get; set; } = false;
+            public List<int> NodeIds { get; set; } = [];
 
             private TagsCollection GetTags()
             {
                 if (Type == HighwayType.NotHighway) return Tags;
-                string highwayType;
-                switch (Type)
+                string highwayType = Type switch
                 {
-                    case HighwayType.Motorway:
-                        highwayType = "motorway";
-                        break;
-                    case HighwayType.Trunk:
-                        highwayType = "trunk";
-                        break;
-                    case HighwayType.Primary:
-                        highwayType = "primary";
-                        break;
-                    case HighwayType.Secondary:
-                        highwayType = "secondary";
-                        break;
-                    case HighwayType.Tertiary:
-                        highwayType = "tertiary";
-                        break;
-                    case HighwayType.Unclassified:
-                        highwayType = "unclassified";
-                        break;
-                    case HighwayType.Residential:
-                        highwayType = "residential";
-                        break;
-                    case HighwayType.Service:
-                        highwayType = "service";
-                        break;
-                    case HighwayType.Pedestrian:
-                        highwayType = "pedestrian";
-                        break;
-                    case HighwayType.Road:
-                        highwayType = "road";
-                        break;
-                    default:
-                        highwayType = "road";
-                        break;
-                }
+                    HighwayType.Motorway => "motorway",
+                    HighwayType.Trunk => "trunk",
+                    HighwayType.Primary => "primary",
+                    HighwayType.Secondary => "secondary",
+                    HighwayType.Tertiary => "tertiary",
+                    HighwayType.Unclassified => "unclassified",
+                    HighwayType.Residential => "residential",
+                    HighwayType.Service => "service",
+                    HighwayType.Pedestrian => "pedestrian",
+                    HighwayType.Road => "road",
+                    _ => "road",
+                };
                 if (IsLink)
                 {
                     highwayType += "_link";
@@ -416,7 +441,7 @@ namespace OSMExport.Systems
             if (!Activated) return;
             Activated = false;
 
-            IDs = new();
+            IDs = [];
             IdCounter = 10000;
 
             var directory = Path.Combine(
@@ -435,17 +460,20 @@ namespace OSMExport.Systems
             var oldCulture = CultureInfo.CurrentCulture;
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
-            List<OsmSharp.Node> nodeXml = new List<OsmSharp.Node>();
-            List<OsmSharp.Way> wayXml = new List<OsmSharp.Way>();
-            List<OsmSharp.Relation> relationXml = new List<OsmSharp.Relation>();
+            List<OsmSharp.Node> nodeXml = [];
+            List<OsmSharp.Way> wayXml = [];
+            List<OsmSharp.Relation> relationXml = [];
 
             AddHighways(nodeXml, wayXml, relationXml);
             AddAreas(nodeXml, wayXml, relationXml);
             AddBuildinds(nodeXml, wayXml, relationXml);
             AddTransportStops(nodeXml, wayXml, relationXml);
-            //AddTrees(nodeXml, wayXml, relationXml);
+            if (EnableTrees)
+            {
+                AddTrees(nodeXml, wayXml, relationXml);
+            }
             AddWaterBodies(nodeXml, wayXml, relationXml);
-            if (EnableContours)
+            if (Mod.m_Setting.EnableContours)
             {
                 AddContourLines(nodeXml, wayXml, relationXml);
             }
@@ -490,20 +518,21 @@ namespace OSMExport.Systems
                 }
             }
             else*/
-            if (ExportPDF)
+            if (ExportPDF || ExportSVG || ExportPNG)
             {
-                if (FileName.EndsWith(".osm"))
+                var ending = ExportPDF ? ".pdf" : ExportSVG ? ".svg" : ".png";
+                if (FileName.ToLower().EndsWith(".osm") || FileName.ToLower().EndsWith(".pdf") || FileName.ToLower().EndsWith(".svg") || FileName.ToLower().EndsWith(".png"))
                 {
-                    FileName = FileName.Substring(0, FileName.Length - ".osm".Length) + ".pdf";
+                    FileName = FileName.Substring(0, FileName.Length - 4) + ending;
                 }
-                else if (!FileName.EndsWith(".pdf"))
+                else if (!FileName.ToLower().EndsWith(ending))
                 {
-                    FileName = FileName + ".pdf";
+                    FileName = FileName + ending;
                 }
                 var logger = new ColossalLogger(m_Logger);
                 var reader = new Reader(logger);
                 DrawIcon.SearchPath = Path.Combine(Mod.AssemblyPath, "Rules");
-                var rules = reader.ReadRules(Path.Combine(Mod.AssemblyPath, "Rules", "OSMExport.mrules"));
+                var rules = reader.ReadRules(Path.Combine(Mod.AssemblyPath, "Rules", Ruleset == Style.Classic ? "OSMExport.mrules" : "OSMExportModern.mrules"));
                 var doc = reader.OSMToGeoDocument(new OsmSharp.API.Osm()
                 {
                     Nodes = nodeXml.ToArray(),
@@ -518,29 +547,49 @@ namespace OSMExport.Systems
                 {
                     document.Pages.Add(pair.Value);
                 }
-                document.SaveAsPDF(Path.Combine(directory, FileName));
+                if (ExportPDF)
+                {
+                    document.SaveAsPDF(Path.Combine(directory, FileName));
+                }
+                else if (ExportSVG)
+                {
+                    //SVGContextInterpreter.SaveAsSVG(document.Pages.First(), Path.Combine(directory, FileName));
+                }
+                else if (ExportPNG)
+                {
+                    //document.Pages.First().SaveAsImage(Path.Combine(directory, FileName));
+                }
             }
             else
             {
-                if (FileName.EndsWith(".osm.pbf"))
+                if (FileName.ToLower().EndsWith(".osm.pbf"))
                 {
-                    FileName = FileName.Substring(0, FileName.Length - ".pbf".Length);
+                    FileName = FileName.Substring(0, FileName.Length - 4);
                 }
-                else if (!FileName.EndsWith(".osm")) {
+                else if (FileName.ToLower().EndsWith(".pdf") || FileName.ToLower().EndsWith(".svg") || FileName.ToLower().EndsWith(".png"))
+                {
+                    FileName = FileName.Substring(0, FileName.Length - 4) + ".osm";
+                }
+                else if (!FileName.EndsWith(".osm"))
+                {
                     FileName = FileName + ".osm";
                 }
-                using (var fileStream = new FileStream(Path.Combine(directory, FileName), FileMode.Create))
-                {
-                    var target = new XmlOsmStreamTarget(fileStream);
-                    target.Initialize();
-                    target.Bounds = osmSharpBounds;
-                    nodeXml.ForEach(target.AddNode);
-                    wayXml.ForEach(target.AddWay);
-                    relationXml.ForEach(target.AddRelation);
-                    target.Flush();
-                    target.Close();
-                }
+
+                using var fileStream = new FileStream(Path.Combine(directory, FileName), FileMode.Create);
+
+                var target = new XmlOsmStreamTarget(fileStream);
+                target.Initialize();
+                target.Bounds = osmSharpBounds;
+                nodeXml.ForEach(target.AddNode);
+                wayXml.ForEach(target.AddWay);
+                relationXml.ForEach(target.AddRelation);
+                target.Flush();
+                target.Close();
             }
+
+            m_Logger.Info("Done!");
+
+            ExportPBF = ExportPDF = ExportSVG = ExportPNG = false;
 
             CultureInfo.CurrentCulture = oldCulture;
         }
@@ -550,6 +599,7 @@ namespace OSMExport.Systems
 
             NativeArray<Entity> nodeEntities = m_NodeQuery.ToEntityArray(Allocator.Temp);
             NativeArray<Entity> edgeEntities = m_EdgeQuery.ToEntityArray(Allocator.Temp);
+            NativeArray<Entity> laneEntities = m_LaneQuery.ToEntityArray(Allocator.Temp);
 
             int bezierCounter = 0;
 
@@ -560,7 +610,7 @@ namespace OSMExport.Systems
                 var entity = nodeEntities[i];
                 var position = EntityManager.GetComponentData<Game.Net.Node>(entity).m_Position;
                 var coordinates = GeoCoordinate.FromGameCoordinages(position.x, position.z);
-                var id = CreateID(NODE, entity.Index);
+                var id = CreateID(NODE, 0, entity.Index);
 
                 var tags = new TagsCollection();
 
@@ -574,9 +624,229 @@ namespace OSMExport.Systems
 
             m_Logger.Info("Generating net ways...");
 
-            List<Highway> ways = new List<Highway>();
-            Dictionary<int, List<Highway>> nodeToHighways = new Dictionary<int, List<Highway>>();
-            Dictionary<int, List<Highway>> aggregateToHighways = new Dictionary<int, List<Highway>>();
+            Dictionary<PathNode, UnmergedNode> pathNodes = [];
+            Dictionary<(int, int), List<UnmergedNode>> positionToNodeRow = [];
+
+            List<Highway> ways = [];
+            Dictionary<int, List<Highway>> nodeToHighways = [];
+            Dictionary<int, List<Highway>> aggregateToHighways = [];
+
+            int pathNodeCounter = 0;
+            int edgeDeltaCounter = 3;
+
+            // Add edge lanes
+            for (int i = 0; i < laneEntities.Length; i++)
+            {
+                var entity = laneEntities[i];
+                var lane = EntityManager.GetComponentData<Game.Net.Lane>(entity);
+                var curve = EntityManager.GetComponentData<Game.Net.Curve>(entity);
+                var owner = EntityManager.GetComponentData<Owner>(entity);
+                var isRoad = EntityManager.HasComponent<Game.Net.CarLane>(entity);
+                if (EntityManager.TryGetComponent<Game.Net.EdgeLane>(entity, out var edge))
+                {
+                    pathNodes[lane.m_StartNode] = new(++pathNodeCounter, owner.m_Owner.Index, isRoad, edge.m_EdgeDelta.x == 0f ? 0 : edge.m_EdgeDelta.x == 1f ? 2 : 1, lane.m_StartNode.GetLaneIndex() & 255)
+                    {
+                        Location = (curve.m_Bezier.a.x, curve.m_Bezier.a.z)
+                    };
+                    pathNodes[lane.m_EndNode] = new(++pathNodeCounter, owner.m_Owner.Index, isRoad, edge.m_EdgeDelta.y == 0f ? 0 : edge.m_EdgeDelta.y == 1f ? 2 : 1, lane.m_EndNode.GetLaneIndex() & 255)
+                    {
+                        Location = (curve.m_Bezier.d.x, curve.m_Bezier.d.z)
+                    };
+                }
+            }
+
+            // Add non-edge lanes
+            for (int i = 0; i < laneEntities.Length; i++)
+            {
+                var entity = laneEntities[i];
+                var lane = EntityManager.GetComponentData<Game.Net.Lane>(entity);
+                var curve = EntityManager.GetComponentData<Game.Net.Curve>(entity);
+                var owner = EntityManager.GetComponentData<Owner>(entity);
+                var isRoad = EntityManager.HasComponent<Game.Net.CarLane>(entity);
+                if (!EntityManager.HasComponent<Game.Net.EdgeLane>(entity))
+                {
+                    if (!pathNodes.ContainsKey(lane.m_StartNode))
+                    {
+                        pathNodes[lane.m_StartNode] = new(++pathNodeCounter, owner.m_Owner.Index, isRoad, ++edgeDeltaCounter, lane.m_StartNode.GetLaneIndex() & 255)
+                        {
+                            Location = (curve.m_Bezier.a.x, curve.m_Bezier.a.z)
+                        };
+                    }
+                    if (!pathNodes.ContainsKey(lane.m_EndNode))
+                    {
+                        pathNodes[lane.m_EndNode] = new(++pathNodeCounter, owner.m_Owner.Index, isRoad, ++edgeDeltaCounter, lane.m_EndNode.GetLaneIndex() & 255)
+                        {
+                            Location = (curve.m_Bezier.d.x, curve.m_Bezier.d.z)
+                        };
+                    }
+                }
+            }
+
+            // Construct node rows (nodes adjacent to each other on different lanes)
+            foreach (var pathNode in pathNodes.Values)
+            {
+                var key = (pathNode.Owner, pathNode.EdgeDelta);
+                if (!positionToNodeRow.ContainsKey(key))
+                {
+                    positionToNodeRow[key] = [];
+                }
+                positionToNodeRow[key].Add(pathNode);
+            }
+
+            Dictionary<int, MergedNode> idToMergedNode = [];
+            List<MergedNode> mergedNodes = [];
+            
+            // Merge node rows into one node
+            foreach (var nodeRow in positionToNodeRow.Values)
+            {
+                if (nodeRow.Count == 0)
+                {
+                    continue;
+                }
+                nodeRow.Sort((a, b) => b.LaneIndex - a.LaneIndex);
+                MergedNode mergedNode = null;
+                for (int i = 0; i < nodeRow.Count; i++)
+                {
+                    // If there is a gap (a median or an empty lane), do not merge the lanes
+                    if (mergedNode is null || !nodeRow[i-1].IsRoad || !nodeRow[i].IsRoad || nodeRow[i].LaneIndex - nodeRow[i-1].LaneIndex > 1)
+                    {
+                        mergedNode = new MergedNode(nodeRow[i].Id, nodeRow[i].Owner);
+                        mergedNodes.Add(mergedNode);
+                    }
+                    mergedNode.Locations.Add(nodeRow[i].Location);
+                    idToMergedNode[nodeRow[i].Id] = mergedNode;
+                }
+            }
+
+            if (EnableAccurateWays)
+            {
+                // Add OSM nodes at the mean of the merged nodes' positions
+                foreach (var mergedNode in mergedNodes)
+                {
+                    var id = CreateID(NODE, 1, mergedNode.Id);
+                    var loc = mergedNode.Location;
+                    var coordinates = GeoCoordinate.FromGameCoordinages(loc.x, loc.z);
+                    nodeXml.Add(NewNode(id, coordinates, []));
+                }
+
+                // Add OSM nodes at the original nodes' positions
+                foreach (var pathNode in pathNodes.Values)
+                {
+                    var id = CreateID(NODE, 2, pathNode.Id);
+                    var coordinates = GeoCoordinate.FromGameCoordinages(pathNode.Location.x, pathNode.Location.z);
+                    nodeXml.Add(NewNode(id, coordinates, []));
+                }
+            }
+
+            HashSet<long> createdNodes = [];
+            Dictionary<int, List<Highway>> ownerToLaneWays = [];
+            Dictionary<(int startNode, int endNode), List<Lane>> lanes1 = [];
+            for (int i = 0; i < laneEntities.Length; i++)
+            {
+                var entity = laneEntities[i];
+                var lane = EntityManager.GetComponentData<Game.Net.Lane>(entity);
+                var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
+                var startNode = idToMergedNode[pathNodes[lane.m_StartNode].Id];
+                var endNode = idToMergedNode[pathNodes[lane.m_EndNode].Id];
+                if (EnableAccurateTrams)
+                {
+                    if (EntityManager.TryGetComponent<TrackLaneData>(prefabRef, out var track) && track.m_TrackTypes.HasFlag(Game.Net.TrackTypes.Tram))
+                    {
+                        Highway way = new(entity.Index);
+                        way.Tags.AddOrReplace("railway", "tram");
+                        way.Tags.AddOrReplace("layer", "1");
+                        Game.Net.Curve? curve2 = EntityManager.TryGetComponent<Game.Net.Curve>(entity, out var curve) ? curve : null;
+                        if (!EnableAccurateWays)
+                        {
+                            var id = CreateID(NODE, 2, pathNodes[lane.m_StartNode].Id);
+                            if (!createdNodes.Contains(id))
+                            {
+                                var coordinates = GeoCoordinate.FromGameCoordinages(pathNodes[lane.m_StartNode].Location.x, pathNodes[lane.m_StartNode].Location.z);
+                                nodeXml.Add(NewNode(id, coordinates, []));
+                                createdNodes.Add(id);
+                            }
+
+                            var id2 = CreateID(NODE, 2, pathNodes[lane.m_EndNode].Id);
+                            if (!createdNodes.Contains(id2))
+                            {
+                                var coordinates = GeoCoordinate.FromGameCoordinages(pathNodes[lane.m_EndNode].Location.x, pathNodes[lane.m_EndNode].Location.z);
+                                nodeXml.Add(NewNode(id2, coordinates, []));
+                                createdNodes.Add(id2);
+                            }
+                        }
+                        bezierCounter = CreateNodes(nodeXml, bezierCounter, CreateID(NODE, 2, pathNodes[lane.m_StartNode].Id), CreateID(NODE, 2, pathNodes[lane.m_EndNode].Id), way, curve2?.m_Bezier);
+                        ways.Add(way);
+                    }
+                }
+                if (EnableAccurateWays)
+                {
+                    if (EntityManager.HasComponent<Game.Net.PedestrianLane>(entity))
+                    {
+                        Highway way = new(entity.Index);
+                        way.Tags.AddOrReplace("highway", "footway");
+                        way.Tags.AddOrReplace("footway", "sidewalk");
+                        way.Tags.AddOrReplace("layer", "-1");
+                        Game.Net.Curve? curve2 = EntityManager.TryGetComponent<Game.Net.Curve>(entity, out var curve) ? curve : null;
+                        bezierCounter = CreateNodes(nodeXml, bezierCounter, CreateID(NODE, 1, startNode.Id), CreateID(NODE, 1, endNode.Id), way, curve2?.m_Bezier);
+                        ways.Add(way);
+                    }
+                    if (EntityManager.TryGetComponent<Game.Net.CarLane>(entity, out var carLane))
+                    {
+                        if (!carLane.m_Flags.HasFlag(Game.Net.CarLaneFlags.SideConnection))
+                        {
+                            var key = startNode.Id < endNode.Id ? (startNode.Id, endNode.Id) : (endNode.Id, startNode.Id);
+                            if (!lanes1.ContainsKey(key)) lanes1[key] = [];
+                            lanes1[key].Add(new(startNode, endNode, entity));
+                        }
+                    }
+                }
+            }
+
+            if (EnableAccurateWays)
+            {
+                foreach (var laneList in lanes1.Values)
+                {
+                    if (laneList.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var entity = laneList[0].LaneEntity;
+                    var lane = EntityManager.GetComponentData<Game.Net.Lane>(entity);
+                    var owner = EntityManager.GetComponentData<Owner>(entity).m_Owner.Index;
+                    owner = laneList[0].StartNode.Owner;
+
+                    var startNodeId = laneList[0].StartNode.Id;
+                    var endNodeId = laneList[0].EndNode.Id;
+                    var oneWay = laneList.All(lane => lane.StartNode.Id == startNodeId);
+
+                    Highway way = new(entity.Index);
+                    if (oneWay)
+                    {
+                        way.Tags.AddOrReplace("oneway", "yes");
+                    }
+                    if (EntityManager.TryGetComponent<Game.Net.Curve>(entity, out var curve))
+                    {
+                        var bezier = curve.m_Bezier;
+                        var da = laneList[0].StartNode.Location - bezier.a;
+                        var dd = laneList[0].EndNode.Location - bezier.d;
+                        var bezier2 = new Bezier4x3(bezier.a + da, bezier.b + da, bezier.c + dd, bezier.d + dd);
+                        bezierCounter = CreateNodes(nodeXml, bezierCounter, CreateID(NODE, 1, startNodeId), CreateID(NODE, 1, endNodeId), way, bezier2);
+                    }
+                    else
+                    {
+                        way.Nodes.Add(CreateID(NODE, 1, startNodeId));
+                        way.Nodes.Add(CreateID(NODE, 1, endNodeId));
+                    }
+
+                    if (!ownerToLaneWays.ContainsKey(owner))
+                    {
+                        ownerToLaneWays[owner] = [];
+                    }
+
+                    ownerToLaneWays[owner].Add(way);
+                }
+            }
 
             for (int i = 0; i < edgeEntities.Length; i++)
             {
@@ -589,10 +859,10 @@ namespace OSMExport.Systems
                 var isElevated = EntityManager.TryGetComponent<Game.Net.Elevation>(entity, out var elevation);
                 var aggregateLen = !isAggregated ? 0 : (EntityManager.TryGetBuffer<Game.Net.AggregateElement>(aggregated.m_Aggregate, true, out var aggregateElements) ? aggregateElements.Length : 0);
 
-                Highway way = new Highway(entity.Index);
+                Highway way = new(entity.Index);
 
                 bool isTwoWay = false;
-                HashSet<int> lanes = new HashSet<int>();
+                HashSet<int> lanes = [];
 
                 foreach (var subLane in subLanes)
                 {
@@ -610,9 +880,11 @@ namespace OSMExport.Systems
                 }
 
                 int numLanes = lanes.Count;
+                var isRoad = false;
 
                 if (EntityManager.TryGetComponent<RoadData>(prefabRef, out var roadData))
                 {
+                    isRoad = true;
                     if (!isTwoWay && aggregateLen < 10)
                     {
                         way.MightBeLink = true;
@@ -623,7 +895,7 @@ namespace OSMExport.Systems
                     {
                         if (!isTwoWay && aggregateLen > 4)
                         {
-                            way.Type = EnableMotorways ? HighwayType.Motorway : HighwayType.Trunk;
+                            way.Type = Mod.m_Setting.EnableMotorways ? HighwayType.Motorway : HighwayType.Trunk;
                         }
                         else
                         {
@@ -721,6 +993,7 @@ namespace OSMExport.Systems
                 }
                 else if (EntityManager.HasComponent<Game.Net.TramTrack>(entity))
                 {
+                    if (Mod.m_Setting.EnableAccurateWays || Mod.m_Setting.EnableAccurateTrams) continue;
                     way.Tags.AddOrReplace("railway", "tram");
                 }
                 else if (EntityManager.HasComponent<Game.Net.SubwayTrack>(entity))
@@ -777,37 +1050,43 @@ namespace OSMExport.Systems
                     }
                 }
 
-                way.Nodes.Add(CreateID(NODE, edge.m_Start.Index));
+                List<Highway> waysToBeAdded = [way];
 
-                if (EntityManager.TryGetComponent<Game.Net.Curve>(entity, out var curve))
+                if (Mod.m_Setting.EnableAccurateWays && isRoad)
                 {
-                    for (int j = 1; j <= 2; j++)
+                    foreach (var laneWay in ownerToLaneWays[entity.Index])
                     {
-                        float f = 0.3f * j;
-                        var pos = MathUtils.Position(curve.m_Bezier, f);
-                        var coordinates = GeoCoordinate.FromGameCoordinages(pos.x, pos.z);
-                        var id = CreateID(BEZIER_NODE, bezierCounter++);
-
-                        nodeXml.Add(NewNode(id, coordinates, new TagsCollection()));
-                        way.Nodes.Add(id);
+                        way.Tags.ForEach(laneWay.Tags.AddOrReplace);
+                        laneWay.Type = way.Type;
+                        laneWay.IsLink = way.IsLink;
+                        laneWay.MightBeLink = way.MightBeLink;
+                        waysToBeAdded.Add(laneWay);
                     }
                 }
-
-                way.Nodes.Add(CreateID(NODE, edge.m_End.Index));
-
-                if (!nodeToHighways.ContainsKey(edge.m_Start.Index)) nodeToHighways[edge.m_Start.Index] = new List<Highway>();
-                nodeToHighways[edge.m_Start.Index].Add(way);
-                if (!nodeToHighways.ContainsKey(edge.m_End.Index)) nodeToHighways[edge.m_End.Index] = new List<Highway>();
-                nodeToHighways[edge.m_End.Index].Add(way);
-                if (isAggregated)
+                else
                 {
-                    if (!aggregateToHighways.ContainsKey(aggregated.m_Aggregate.Index)) aggregateToHighways[aggregated.m_Aggregate.Index] = new List<Highway>();
-                    aggregateToHighways[aggregated.m_Aggregate.Index].Add(way);
+                    Game.Net.Curve? curve2 = EntityManager.TryGetComponent<Game.Net.Curve>(entity, out var curve) ? curve : null;
+                    bezierCounter = CreateNodes(nodeXml, bezierCounter, CreateID(NODE, 0, edge.m_Start.Index), CreateID(NODE, 0, edge.m_End.Index), way, curve2?.m_Bezier);
+                    waysToBeAdded.Add(way);
                 }
 
-                way.NodeIds = new List<int>() { edge.m_Start.Index, edge.m_End.Index };
+                foreach (var way1 in waysToBeAdded)
+                {
 
-                ways.Add(way);
+                    if (!nodeToHighways.ContainsKey(edge.m_Start.Index)) nodeToHighways[edge.m_Start.Index] = [];
+                    nodeToHighways[edge.m_Start.Index].Add(way1);
+                    if (!nodeToHighways.ContainsKey(edge.m_End.Index)) nodeToHighways[edge.m_End.Index] = [];
+                    nodeToHighways[edge.m_End.Index].Add(way1);
+                    if (isAggregated)
+                    {
+                        if (!aggregateToHighways.ContainsKey(aggregated.m_Aggregate.Index)) aggregateToHighways[aggregated.m_Aggregate.Index] = [];
+                        aggregateToHighways[aggregated.m_Aggregate.Index].Add(way1);
+                    }
+
+                    way1.NodeIds = [edge.m_Start.Index, edge.m_End.Index];
+
+                    ways.Add(way1);
+                }
             }
 
             m_Logger.Info("Updating link road types");
@@ -856,6 +1135,31 @@ namespace OSMExport.Systems
 
             nodeEntities.Dispose();
             edgeEntities.Dispose();
+            laneEntities.Dispose();
+        }
+
+        private int CreateNodes(List<OsmSharp.Node> nodeXml, int bezierCounter, long startId, long endId, Highway way, Bezier4x3? bezier)
+        {
+            way.Nodes.Add(startId);
+
+            if (bezier is not null)
+            {
+                Bezier4x3 bezier1 = bezier ?? throw new ArgumentNullException();
+                for (int j = 1; j <= 2; j++)
+                {
+                    float f = 0.3f * j;
+                    var pos = MathUtils.Position(bezier1, f);
+                    var coordinates = GeoCoordinate.FromGameCoordinages(pos.x, pos.z);
+                    var id = CreateID(BEZIER_NODE, bezierCounter++);
+
+                    nodeXml.Add(NewNode(id, coordinates, new TagsCollection()));
+                    way.Nodes.Add(id);
+                }
+            }
+
+            way.Nodes.Add(endId);
+
+            return bezierCounter;
         }
 
         private void AddAreas(List<OsmSharp.Node> nodeXml, List<OsmSharp.Way> wayXml, List<OsmSharp.Relation> relationXml)
@@ -937,7 +1241,7 @@ namespace OSMExport.Systems
 
                     var wayId = CreateID(AREA, entity.Index, 1);
 
-                    List<long> nodeIds = new List<long>();
+                    List<long> nodeIds = [];
                     for (int j = 0; j < nodes.Length; j++)
                     {
                         var id = CreateID(AREA, entity.Index, 1, j);
@@ -1296,7 +1600,7 @@ namespace OSMExport.Systems
 
                     var wayId = CreateID(BUILDING, entity.Index, 1);
 
-                    wayXml.Add(NewWay(wayId, new long[] { id1, id2, id3, id4, id1 }, tags));
+                    wayXml.Add(NewWay(wayId, [id1, id2, id3, id4, id1], tags));
                 }
                 else
                 {
@@ -1565,10 +1869,16 @@ namespace OSMExport.Systems
                 var transform = EntityManager.GetComponentData<Game.Objects.Transform>(entity);
                 var prefabRef = EntityManager.GetComponentData<PrefabRef>(entity);
                 var coordinates = GeoCoordinate.FromGameCoordinages(transform.m_Position.x, transform.m_Position.z);
-                var tags = new TagsCollection();
-                tags.AddOrReplace("natural", "tree");
+                if (EntityManager.TryGetComponent<TreeData>(prefabRef, out var treeData))
+                {
+                    if (treeData.m_WoodAmount > 0)
+                    {
+                        var tags = new TagsCollection();
+                        tags.AddOrReplace("natural", "tree");
 
-                nodeXml.Add(NewNode(CreateID(TREE, entity.Index), coordinates, tags));
+                        nodeXml.Add(NewNode(CreateID(TREE, entity.Index), coordinates, tags));
+                    }
+                }
             }
 
             trees.Dispose();
@@ -1581,15 +1891,13 @@ namespace OSMExport.Systems
             WaterSurfaceData waterSurfaceData = m_WaterSystem.GetSurfaceData(out var deps);
             Bounds bounds = m_TerrainSystem.GetTerrainBounds();
 
-            const int rectSize = 20;
-
             HashSet<(int, int)> waterNodes = new HashSet<(int, int)>();
 
             int xi = 0;
-            for (float x = bounds.min.x; x < bounds.max.x; x += rectSize, xi += 3)
+            for (float x = bounds.min.x; x < bounds.max.x; x += WaterResolution, xi += 3)
             {
                 int zi = 0;
-                for (float z = bounds.min.z; z < bounds.max.z; z += rectSize, zi += 3)
+                for (float z = bounds.min.z; z < bounds.max.z; z += WaterResolution, zi += 3)
                 {
                     float3 position = new float3(x, 0, z);
                     if (IsUnderwater(waterSurfaceData, heightData, position, out var height, out var depth))
@@ -1719,8 +2027,8 @@ namespace OSMExport.Systems
                 var sortedInnerEdges = new List<List<(int, int)>>();
                 var currentSortedEdges = sortedOuterEdges;
 
-                (int, int)[] directions = new (int, int)[]
-                {
+                (int, int)[] directions =
+                [
                     (1, -1),
                     (0, -1),
                     (-1, -1),
@@ -1729,7 +2037,7 @@ namespace OSMExport.Systems
                     (0, 1),
                     (1, 1),
                     (1, 0),
-                };
+                ];
 
                 // Find the outer outer edges
                 while (true)
@@ -1803,8 +2111,8 @@ namespace OSMExport.Systems
                 for (int i = 0; i < allEdges.Count; i++)
                 {
                     var node = allEdges[i];
-                    var x = bounds.min.x + node.Item1 * rectSize / 3;
-                    var z = bounds.min.z + node.Item2 * rectSize / 3;
+                    var x = bounds.min.x + node.Item1 * WaterResolution / 3;
+                    var z = bounds.min.z + node.Item2 * WaterResolution / 3;
                     var coordinates = GeoCoordinate.FromGameCoordinages(x, z);
                     var id = CreateID(WATER, wb, 0, node.Item1, node.Item2);
 
@@ -1931,10 +2239,10 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 1, z * 2 + 2));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+0, z*2+1),
                                     CreateID(CONTOUR, 1, x*2+1, z*2+2),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -1944,10 +2252,10 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 1, z * 2 + 2));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+2, z*2+1),
                                     CreateID(CONTOUR, 1, x*2+1, z*2+2),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -1957,10 +2265,10 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 2, z * 2 + 1));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+0, z*2+1),
                                     CreateID(CONTOUR, 1, x*2+2, z*2+1),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -1970,10 +2278,10 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 2, z * 2 + 1));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+1, z*2+0),
                                     CreateID(CONTOUR, 1, x*2+2, z*2+1),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -1985,18 +2293,18 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 2, z * 2 + 1));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z, 1),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+1, z*2+0),
                                     CreateID(CONTOUR, 1, x*2+0, z*2+1),
-                                },
+                                ],
                                 tags
                             ));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z, 2),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+1, z*2+2),
                                     CreateID(CONTOUR, 1, x*2+2, z*2+1),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -2008,18 +2316,18 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 2, z * 2 + 1));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z, 1),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+0, z*2+1),
                                     CreateID(CONTOUR, 1, x*2+1, z*2+2),
-                                },
+                                ],
                                 tags
                             ));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z, 2),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+1, z*2+0),
                                     CreateID(CONTOUR, 1, x*2+2, z*2+1),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -2029,10 +2337,10 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 1, z * 2 + 2));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+1, z*2+0),
                                     CreateID(CONTOUR, 1, x*2+1, z*2+2),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -2042,10 +2350,10 @@ namespace OSMExport.Systems
                             points.Add((x * 2 + 0, z * 2 + 1));
                             wayXml.Add(NewWay(
                                 CreateID(CONTOUR, 0, x, z),
-                                new long[] {
+                                [
                                     CreateID(CONTOUR, 1, x*2+1, z*2+0),
                                     CreateID(CONTOUR, 1, x*2+0, z*2+1),
-                                },
+                                ],
                                 tags
                             ));
                         }
@@ -2082,10 +2390,7 @@ namespace OSMExport.Systems
             }
             else if (nameType == NameSystem.NameType.Formatted)
             {
-                if (nameArgs == null)
-                {
-                    nameArgs = new string[0];
-                }
+                nameArgs ??= [];
                 for (int i = 0; i < nameArgs.Length; i++)
                 {
                     if (nameArgs[i] != null && GameManager.instance.localizationManager.activeDictionary.TryGetValue(nameArgs[i], out var localizedArg))

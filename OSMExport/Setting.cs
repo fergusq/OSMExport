@@ -47,7 +47,8 @@ namespace OSMExport
         }
 
         [SettingsUISection(kSection, kCommonExportGroup)]
-        public bool EnableMotorways {
+        public bool EnableMotorways
+        {
             get
             {
                 return OSMExportSystem.EnableMotorways;
@@ -55,6 +56,47 @@ namespace OSMExport
             set
             {
                 OSMExportSystem.EnableMotorways = value;
+            }
+        }
+
+        [SettingsUISection(kSection, kCommonExportGroup)]
+        [SettingsUIHidden]
+        public bool EnableAccurateWays
+        {
+            get
+            {
+                return OSMExportSystem.EnableAccurateWays;
+            }
+            set
+            {
+                OSMExportSystem.EnableAccurateWays = value;
+            }
+        }
+
+        [SettingsUISection(kSection, kCommonExportGroup)]
+        public bool EnableAccurateTrams
+        {
+            get
+            {
+                return OSMExportSystem.EnableAccurateTrams;
+            }
+            set
+            {
+                OSMExportSystem.EnableAccurateTrams = value;
+            }
+        }
+
+        [SettingsUISection(kSection, kCommonExportGroup)]
+        [SettingsUISlider(min = 10, max = 100, step = 5)]
+        public int WaterResolution
+        {
+            get
+            {
+                return OSMExportSystem.WaterResolution;
+            }
+            set
+            {
+                OSMExportSystem.WaterResolution = value;
             }
         }
 
@@ -112,6 +154,19 @@ namespace OSMExport
         }
 
         [SettingsUISection(kSection, kImageExportGroup)]
+        public OSMExportSystem.Style Ruleset
+        {
+            get
+            {
+                return OSMExportSystem.Ruleset;
+            }
+            set
+            {
+                OSMExportSystem.Ruleset = value;
+            }
+        }
+
+        [SettingsUISection(kSection, kImageExportGroup)]
         [SettingsUIButtonGroup(kImageExportButtonGroup)]
         [SettingsUIDisableByCondition(typeof(Setting), nameof(NotInGameOrEditor))]
         public bool ExportPDF
@@ -123,18 +178,49 @@ namespace OSMExport
             }
         }
 
+        [SettingsUISection(kSection, kImageExportGroup)]
+        [SettingsUIButtonGroup(kImageExportButtonGroup)]
+        [SettingsUIDisableByCondition(typeof(Setting), nameof(NotInGameOrEditor))]
+        [SettingsUIHidden]
+        public bool ExportSVG
+        {
+            set
+            {
+                OSMExportSystem.Activated = true;
+                OSMExportSystem.ExportSVG = true;
+            }
+        }
+
+        [SettingsUISection(kSection, kImageExportGroup)]
+        [SettingsUIButtonGroup(kImageExportButtonGroup)]
+        [SettingsUIDisableByCondition(typeof(Setting), nameof(NotInGameOrEditor))]
+        [SettingsUIHidden]
+        public bool ExportPNG
+        {
+            set
+            {
+                OSMExportSystem.Activated = true;
+                OSMExportSystem.ExportPNG = true;
+            }
+        }
+
+
+
         // Advanced
 
         [SettingsUISection(kSectionAdvanced, kAdvancedGroup)]
-        public bool EnableContours
+        public bool EnableContours { get; set; }
+
+        [SettingsUISection(kSectionAdvanced, kAdvancedGroup)]
+        public bool EnableTrees
         {
             get
             {
-                return OSMExportSystem.EnableContours;
+                return OSMExportSystem.EnableTrees;
             }
             set
             {
-                OSMExportSystem.EnableContours = value;
+                OSMExportSystem.EnableTrees = value;
             }
         }
 
@@ -293,6 +379,17 @@ namespace OSMExport
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.EnableMotorways)), "Enable motorways" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.EnableMotorways)), $"If enabled, the mod will try to deduce which oneway highways are normal highways (green in the default Maperitive ruleset) and which are motorways (blue). Generally works well, but sometimes motorway ramps might be misclassified as highways or vice versa, leading to inconsistent look. If disabled, all highways will be normal (green) highways." },
 
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.EnableAccurateTrams)), "Enable detailed tram tracks" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.EnableAccurateTrams)), $"If enabled, the tram tracks will be renderer on top of roads." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.EnableAccurateWays)), "Enable detailed networks" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.EnableAccurateWays)), $"If enabled, the map will contain: 1) roads with median as multiple roads, 2) tram lines on roads, 3) sidewalks." },
+
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.WaterResolution)), "Water resolution (cell size)" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.WaterResolution)), $"Larger cell size will cause faster export process with the cost of lower resolution." },
+
+
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.FileName)), "Output file name" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.FileName)), $"The file name should have the .osm file suffix." },
 
@@ -304,17 +401,34 @@ namespace OSMExport
 
                 { m_Setting.GetOptionGroupLocaleID(Setting.kImageExportGroup), "PDF Export" },
 
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.Ruleset)), "Style" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.Ruleset)), $"Select the style of the map.\n\nClassic refers to the OSM Carto style from pre 2015.\n\nModern is a variant that has colors more akin to the current OSM Carto style." },
+
+                { m_Setting.GetEnumValueLocaleID(OSMExportSystem.Style.Classic), "Classic" },
+                { m_Setting.GetEnumValueLocaleID(OSMExportSystem.Style.Modern), "Modern" },
+
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.ZoomLevel)), "Zoom level" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.ZoomLevel)), $"11 makes a small image with almost no details. 18 makes a very large image with a lot of details." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.ExportPDF)), "Generate PDF" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.ExportPDF)), $"A file will be created in the ModsData directory. This may take up to a minute!\n\nIf the file name does not end in .pdf, the .pdf extension is added automatically.\n\nThis feature is experimental! It might have graphical issues and other bugs." },
 
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.ExportSVG)), "Generate SVG" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.ExportSVG)), $"A file will be created in the ModsData directory. This may take up to a minute!\n\nIf the file name does not end in .svg, the .svg extension is added automatically.\n\nThis feature is experimental! It might have graphical issues and other bugs." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.ExportPNG)), "Generate PNG" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.ExportPNG)), $"A file will be created in the ModsData directory. This may take up to a minute!\n\nIf the file name does not end in .png, the .png extension is added automatically.\n\nThis feature is experimental! It might have graphical issues and other bugs." },
+
+
                 { m_Setting.GetOptionTabLocaleID(Setting.kSectionAdvanced), "Experimental" },
                 { m_Setting.GetOptionGroupLocaleID(Setting.kAdvancedGroup), "Experimental options" },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.EnableContours)), "Enable contours" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.EnableContours)), $"If enabled, contour lines will be exported as ways tagged with contour=elevation.\n\nIf the contours are not showing in Maperitive, update your ruleset to the latest version of the ruleset linked on the mod page." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.EnableTrees)), "Enable trees" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.EnableTrees)), $"If enabled, the exporter will add trees to map (visible on Zoom Level 17 in the PDF export). This might slow down exporting significantly if there are too many trees, or even crash the game. It is recommended to only use this with external programs like Maperitive and not with the builtin PDF export." },
+
 
                 { m_Setting.GetOptionGroupLocaleID(Setting.kTransitGroup), "Transport lines" },
 

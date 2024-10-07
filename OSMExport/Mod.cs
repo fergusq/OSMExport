@@ -1,18 +1,21 @@
-﻿using System.IO;
+﻿using System.Drawing;
+using System.IO;
 using System.Reflection;
 using Colossal.IO.AssetDatabase;
 using Colossal.Logging;
 using Game;
+using Game.Buildings;
 using Game.Modding;
 using Game.SceneFlow;
 using OSMExport.Systems;
+using VectSharp;
 
 namespace OSMExport
 {
     public class Mod : IMod
     {
         public static ILog Log { get; } = LogManager.GetLogger($"{nameof(OSMExport)}.{nameof(Mod)}").SetShowsErrorsInUI(false);
-        private Setting m_Setting;
+        public static Setting m_Setting;
 
         // Copied from https://github.com/algernon-A/UnifiedIconLibrary/blob/master/Code/Mod.cs
         // By algernon licensed under the Apache 2.0 license
@@ -56,6 +59,9 @@ namespace OSMExport
             updateSystem.UpdateAfter<OSMExportSystem>(SystemUpdatePhase.UIUpdate);
 
             AssetDatabase.global.LoadSettings(nameof(OSMExport), m_Setting, new Setting(this));
+
+            //OSMRender.Render.Commands.DrawFill.AllowMask = false;
+            //VectSharp.Graphics.RasterisationMethod = VectSharp.Raster.ImageSharp.ImageSharpContextInterpreter.Rasterise;
         }
 
         public void OnDispose()
